@@ -23,6 +23,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
+    // If Firebase didn't initialize (missing/invalid env), skip subscription.
+    if (!auth || !db) {
+      setLoading(false)
+      setError("Firebase is not configured. Check .env.local NEXT_PUBLIC_* values.")
+      return
+    }
+
     const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
       try {
         if (fbUser) {
@@ -56,6 +63,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = async () => {
     try {
+      if (!auth) {
+        throw new Error("Firebase auth is not available")
+      }
       await auth.signOut()
       setUser(null)
       setFirebaseUser(null)

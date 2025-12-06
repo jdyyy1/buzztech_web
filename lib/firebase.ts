@@ -12,8 +12,39 @@ const firebaseConfig = {
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 }
 
-const app = initializeApp(firebaseConfig)
-export const auth = getAuth(app)
-export const db = getFirestore(app)
+function hasValidConfig() {
+  return (
+    !!firebaseConfig.apiKey &&
+    !!firebaseConfig.authDomain &&
+    !!firebaseConfig.projectId &&
+    !!firebaseConfig.appId
+  )
+}
 
+// Only initialize Firebase when config is present. This prevents
+// build-time SSR/prerender from failing if env vars are missing.
+let app: ReturnType<typeof initializeApp> | undefined
+let auth: ReturnType<typeof getAuth> | undefined
+let db: ReturnType<typeof getFirestore> | undefined
+
+if (hasValidConfig()) {
+  try {
+    app = initializeApp(firebaseConfig)
+    auth = getAuth(app)
+    db = getFirestore(app)
+  } catch (e) {
+    // Swallow initialization errors during build/prerender; runtime should surface logs
+    if (process.env.NODE_ENV !== "production") {
+      console.warn("Firebase failed to initialize:", e)
+    }
+  }
+} else {
+  if (process.env.NODE_ENV !== "production") {
+    console.warn(
+      "Firebase config missing. Set NEXT_PUBLIC_* env vars in .env.local to enable Firebase."
+    )
+  }
+}
+
+export { auth, db }
 export default app

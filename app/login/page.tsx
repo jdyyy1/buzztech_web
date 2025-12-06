@@ -25,6 +25,9 @@ export default function LoginPage() {
     setLoading(true)
 
     try {
+      if (!auth || !db) {
+        throw new Error("Firebase is not configured. Check .env.local NEXT_PUBLIC_* values.")
+      }
       const userCredential = await signInWithEmailAndPassword(auth, email, password)
       const user = userCredential.user
 
@@ -120,7 +123,9 @@ export default function LoginPage() {
           </Button>
         </form>
 
-        <p className="text-center text-sm text-muted-foreground">Connected to Firebase Authentication system</p>
+        <p className="text-center text-sm text-muted-foreground">
+          {auth && db ? "Connected to Firebase Authentication system" : "Firebase not configured"}
+        </p>
       </Card>
     </div>
   )

@@ -1,0 +1,12 @@
+{
+  "/_global-error/page": "/_global-error",
+  "/_not-found/page": "/_not-found",
+  "/api/auth/login/route": "/api/auth/login",
+  "/api/auth/logout/route": "/api/auth/logout",
+  "/dashboard/page": "/dashboard",
+  "/dashboard/revenue/page": "/dashboard/revenue",
+  "/dashboard/settings/page": "/dashboard/settings",
+  "/dashboard/users/page": "/dashboard/users",
+  "/login/page": "/login",
+  "/page": "/"
+}
