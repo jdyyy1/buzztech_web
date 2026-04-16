@@ -3,7 +3,7 @@ export interface User {
   name: string
   email: string
   password_hash: string
-  role: "admin" | "staff" | "client"
+  role: "admin" | "staff" | "client" | "superadmin"
   profile_image?: string
   status: "active" | "inactive" | "suspended"
   created_at: Date

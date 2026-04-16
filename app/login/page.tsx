@@ -34,9 +34,9 @@ export default function LoginPage() {
       const userDoc = await getDoc(doc(db, "users", user.uid))
       const userData = userDoc.data()
 
-      if (!userData || userData.role !== "admin") {
+      if (!userData || (userData.role !== "admin" && userData.role !== "staff" && userData.role !== "superadmin")) {
         await auth.signOut()
-        setError("You do not have admin access. Contact your administrator.")
+        setError("You do not have authorized access. Contact your administrator.")
         return
       }
 
@@ -44,8 +44,12 @@ export default function LoginPage() {
       const token = await user.getIdToken()
       document.cookie = `__session=${token}; path=/; max-age=3600; SameSite=Strict`
 
-      // Redirect to dashboard
-      router.push("/dashboard")
+      // Redirect based on role
+      if (userData.role === "superadmin") {
+        router.push("/superadmin/dashboard")
+      } else {
+        router.push("/dashboard")
+      }
     } catch (err) {
       if (err instanceof Error) {
         if (err.message.includes("auth/user-not-found")) {

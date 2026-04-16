@@ -4,7 +4,7 @@ import type { NextRequest } from "next/server"
 export async function middleware(request: NextRequest) {
   const token = request.cookies.get("__session")?.value
 
-  if (request.nextUrl.pathname.startsWith("/dashboard")) {
+  if (request.nextUrl.pathname.startsWith("/dashboard") || request.nextUrl.pathname.startsWith("/superadmin")) {
     if (!token) {
       return NextResponse.redirect(new URL("/login", request.url))
     }
@@ -22,5 +22,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/"],
+  matcher: ["/dashboard/:path*", "/superadmin/:path*", "/"],
 }

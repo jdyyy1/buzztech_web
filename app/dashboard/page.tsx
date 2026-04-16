@@ -1,91 +1,70 @@
 "use client"
 
-import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from "recharts"
-import { TrendingUp, Users, Briefcase, ArrowRight, BarChart3 } from "lucide-react"
+import { Users, Briefcase, ArrowRight, Settings } from "lucide-react"
 import { Card } from "@/components/ui/card"
-
-// Mock data
-const statData = [
-  { label: "Total Users", value: "1,247", change: "+12% this week", icon: Users, color: "bg-blue-50" },
-  { label: "Active Projects", value: "89", change: "+6% this week", icon: Briefcase, color: "bg-amber-50" },
-]
-
-const revenueData = [
-  { label: "Commission", value: "₱45,890", change: "+11%", color: "bg-green-100 text-green-700" },
-  { label: "AI Revenue", value: "₱12,340", change: "This month", color: "bg-amber-100 text-amber-700" },
-]
+import { useRouter } from "next/navigation"
+import { useAuth } from "@/lib/auth-context"
 
 const quickActions = [
-  { title: "Manage Users", description: "View and edit user accounts", icon: Users },
-  { title: "Manage Services", description: "View and edit user accounts", icon: Briefcase },
-  { title: "Commission Management", description: "Track and manage commissions", icon: TrendingUp },
-  { title: "Analytics", description: "View detailed reports", icon: BarChart3 },
-]
-
-const monthlyData = [
-  { month: "Jan", value: 15000 },
-  { month: "Feb", value: 18000 },
-  { month: "Mar", value: 20000 },
-  { month: "Apr", value: 22000 },
-  { month: "May", value: 25000 },
-  { month: "Jun", value: 24000 },
+  { title: "Manage Users", description: "View and edit user accounts", icon: Users, href: "/dashboard/users" },
+  { title: "Manage Services", description: "View and edit service listings", icon: Briefcase, href: "/dashboard/settings" },
+  { title: "System Settings", description: "Configure system parameters", icon: Settings, href: "/dashboard/settings" },
 ]
 
 export default function DashboardPage() {
+  const router = useRouter()
+  const { user } = useAuth()
+
+  const getDisplayName = () => {
+    if (!user) return ""
+    if (user.role === "admin") return "Admin"
+    
+    // For staff and others, get only the first name
+    const fullName = user.name || ""
+    return fullName.split(" ")[0]
+  }
+
   return (
     <div className="p-8 space-y-8">
-      <div>
-        <h1 className="text-3xl font-bold text-foreground">Admin Dashboard</h1>
-        <p className="text-muted-foreground mt-2">BUZZ TECH Management</p>
-      </div>
-
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {statData.map((stat) => {
-          const Icon = stat.icon
-          return (
-            <Card key={stat.label} className="p-6">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">{stat.label}</p>
-                  <p className="text-3xl font-bold mt-2">{stat.value}</p>
-                  <p className="text-xs text-success mt-2">↑ {stat.change}</p>
-                </div>
-                <div className={`p-3 rounded-lg ${stat.color}`}>
-                  <Icon className="w-6 h-6 text-muted-foreground" />
-                </div>
-              </div>
-            </Card>
-          )
-        })}
-      </div>
-
-      {/* Revenue Overview */}
-      <div>
-        <h2 className="text-xl font-bold mb-4">Revenue Overview</h2>
-        <div className="grid grid-cols-2 gap-4">
-          {revenueData.map((item) => (
-            <Card key={item.label} className={`p-6 ${item.color.replace("text-", "text-")}`}>
-              <p className="text-sm opacity-75">{item.label}</p>
-              <p className="text-2xl font-bold mt-2">{item.value}</p>
-              <p className="text-xs opacity-60 mt-2">{item.change}</p>
-            </Card>
-          ))}
+      <div className="flex justify-between items-start">
+        <div>
+          <h1 className="text-3xl font-bold text-foreground">Management Dashboard</h1>
+          <p className="text-muted-foreground mt-2">BUZZ TECH Management System</p>
         </div>
+        {user?.role === "superadmin" && (
+          <button 
+            onClick={() => router.push("/superadmin/dashboard")}
+            className="bg-primary text-primary-foreground px-4 py-2 rounded-lg font-bold shadow-lg hover:opacity-90 transition-opacity flex items-center gap-2"
+          >
+            GO TO SUPERADMIN <ArrowRight className="w-4 h-4" />
+          </button>
+        )}
+      </div>
+
+      <div className="bg-accent/30 p-6 rounded-xl border border-border">
+        <h2 className="text-lg font-semibold mb-2">Welcome back, {getDisplayName()}!</h2>
+        <p className="text-sm text-muted-foreground">
+          You are logged in as <span className="font-bold text-foreground uppercase">{user?.role}</span>.
+          Use the quick actions below or the sidebar to manage the platform.
+        </p>
       </div>
 
       {/* Quick Actions */}
       <div>
         <h2 className="text-xl font-bold mb-4">Quick Actions</h2>
-        <div className="space-y-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {quickActions.map((action) => {
             const Icon = action.icon
             return (
-              <Card key={action.title} className="p-4 hover:shadow-md transition-shadow cursor-pointer">
+              <Card 
+                key={action.title} 
+                className="p-4 hover:shadow-md transition-shadow cursor-pointer border-2 hover:border-primary/50"
+                onClick={() => router.push(action.href)}
+              >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-4">
-                    <div className="p-2 rounded-lg bg-accent">
-                      <Icon className="w-6 h-6 text-accent-foreground" />
+                    <div className="p-2 rounded-lg bg-primary/10">
+                      <Icon className="w-6 h-6 text-primary" />
                     </div>
                     <div>
                       <p className="font-semibold">{action.title}</p>
@@ -100,18 +79,12 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Chart */}
-      <Card className="p-6">
-        <h2 className="text-lg font-bold mb-6">Monthly Revenue Trend</h2>
-        <ResponsiveContainer width="100%" height={300}>
-          <LineChart data={monthlyData}>
-            <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
-            <XAxis dataKey="month" />
-            <YAxis />
-            <Tooltip />
-            <Line type="monotone" dataKey="value" stroke="var(--color-accent)" strokeWidth={2} />
-          </LineChart>
-        </ResponsiveContainer>
+      {/* Recent Activity Placeholder */}
+      <Card className="p-6 border-dashed border-2">
+        <div className="text-center py-8">
+          <p className="text-muted-foreground font-medium">No recent notifications</p>
+          <p className="text-xs text-muted-foreground/60 mt-1">Updates and alerts will appear here</p>
+        </div>
       </Card>
     </div>
   )
