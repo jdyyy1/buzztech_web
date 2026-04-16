@@ -1,8 +1,0 @@
-{
-  "/api/users/count/route": "app/api/users/count/route.js",
-  "/dashboard/page": "app/dashboard/page.js",
-  "/dashboard/settings/page": "app/dashboard/settings/page.js",
-  "/dashboard/users/page": "app/dashboard/users/page.js",
-  "/login/page": "app/login/page.js",
-  "/superadmin/dashboard/page": "app/superadmin/dashboard/page.js"
-}
