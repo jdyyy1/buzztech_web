@@ -1,9 +1,20 @@
 "use client"
 
 import { useState } from "react"
-import { Search, ChevronRight } from "lucide-react"
+import { Search, ChevronRight, UserPlus, Mail, Lock, User as UserIcon } from "lucide-react"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
 
 const users = [
   {
@@ -46,6 +57,7 @@ const users = [
 
 export default function UsersPage() {
   const [searchTerm, setSearchTerm] = useState("")
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
 
   const filteredUsers = users.filter(
     (user) =>
@@ -53,11 +65,67 @@ export default function UsersPage() {
       user.email.toLowerCase().includes(searchTerm.toLowerCase()),
   )
 
+  const handleCreateStaff = (e: React.FormEvent) => {
+    e.preventDefault()
+    // Logic to create staff in Firebase would go here
+    setIsCreateDialogOpen(false)
+    alert("Staff created successfully! (Mock)")
+  }
+
   return (
     <div className="p-8 space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Users</h1>
-        <p className="text-muted-foreground">Manage and view user accounts</p>
+      <div className="flex justify-between items-end">
+        <div>
+          <h1 className="text-3xl font-bold">Users</h1>
+          <p className="text-muted-foreground">Manage and view user accounts</p>
+        </div>
+        
+        <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+          <DialogTrigger asChild>
+            <Button className="gap-2 bg-primary hover:bg-primary/90">
+              <UserPlus className="w-4 h-4" /> Create Staff
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="sm:max-w-[425px]">
+            <form onSubmit={handleCreateStaff}>
+              <DialogHeader>
+                <DialogTitle>Create New Staff</DialogTitle>
+                <DialogDescription>
+                  Enter the details for the new staff member. They will use these credentials to log in.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-4 py-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="name">Full Name</Label>
+                  <div className="relative">
+                    <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input id="name" placeholder="John Doe" className="pl-10" required />
+                  </div>
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="email">Email Address</Label>
+                  <div className="relative">
+                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input id="email" type="email" placeholder="john@buzztech.com" className="pl-10" required />
+                  </div>
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="password">Password</Label>
+                  <div className="relative">
+                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input id="password" type="password" placeholder="••••••••" className="pl-10" required />
+                  </div>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit">Create Account</Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
       </div>
 
       {/* Search */}

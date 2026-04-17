@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Lock, Mail, Eye, EyeOff } from "lucide-react"
-import { signInWithEmailAndPassword } from "firebase/auth"
+import { signInWithEmailAndPassword, signInWithCustomToken } from "firebase/auth"
 import { auth, db } from "@/lib/firebase"
 import { doc, getDoc } from "firebase/firestore"
 
@@ -28,11 +28,39 @@ export default function LoginPage() {
       if (!auth || !db) {
         throw new Error("Firebase is not configured. Check .env.local NEXT_PUBLIC_* values.")
       }
-      const userCredential = await signInWithEmailAndPassword(auth, email, password)
-      const user = userCredential.user
 
-      const userDoc = await getDoc(doc(db, "users", user.uid))
-      const userData = userDoc.data()
+      let user;
+      let userData;
+
+      try {
+        // Step 1: Try standard Firebase Auth
+        const userCredential = await signInWithEmailAndPassword(auth, email, password)
+        user = userCredential.user
+        const userDoc = await getDoc(doc(db, "users", user.uid))
+        userData = userDoc.data()
+      } catch (fbAuthError: any) {
+        // Step 2: If standard auth fails, try our custom API (for Firestore-only users with password_temp)
+        console.log("Standard auth failed, trying custom login API...")
+
+        const response = await fetch("/api/auth/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, password })
+        })
+
+        if (!response.ok) {
+          throw fbAuthError // Re-throw if API also fails
+        }
+
+        const data = await response.json()
+        if (data.token) {
+          const customCredential = await signInWithCustomToken(auth, data.token)
+          user = customCredential.user
+          userData = data.user
+        } else {
+          throw fbAuthError
+        }
+      }
 
       if (!userData || (userData.role !== "admin" && userData.role !== "staff" && userData.role !== "superadmin")) {
         await auth.signOut()
@@ -50,19 +78,15 @@ export default function LoginPage() {
       } else {
         router.push("/dashboard")
       }
-    } catch (err) {
-      if (err instanceof Error) {
-        if (err.message.includes("auth/user-not-found")) {
-          setError("Email not registered. Please sign up first.")
-        } else if (err.message.includes("auth/wrong-password")) {
-          setError("Incorrect password")
-        } else if (err.message.includes("auth/invalid-email")) {
-          setError("Invalid email format")
-        } else {
-          setError(err.message)
-        }
+    } catch (err: any) {
+      if (err.message?.includes("auth/user-not-found") || err.message?.includes("auth/invalid-credential")) {
+        setError("Invalid email or password. Please check your credentials.")
+      } else if (err.message?.includes("auth/wrong-password")) {
+        setError("Incorrect password")
+      } else if (err.message?.includes("auth/invalid-email")) {
+        setError("Invalid email format")
       } else {
-        setError("Login failed. Please try again.")
+        setError(err.message || "Login failed. Please try again.")
       }
       console.error(err)
     } finally {

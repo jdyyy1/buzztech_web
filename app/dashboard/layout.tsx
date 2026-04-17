@@ -3,7 +3,7 @@
 import type React from "react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
-import { LayoutGrid, Users, BarChart3, Settings, LogOut, ShieldAlert } from "lucide-react"
+import { LayoutGrid, Users, BarChart3, Settings, LogOut, ShieldAlert, Briefcase } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/lib/auth-context"
 
@@ -18,7 +18,15 @@ export default function DashboardLayout({
 
   const navItems = [
     { href: "/dashboard", label: "Dashboard", icon: LayoutGrid },
-    { href: "/dashboard/users", label: "Users", icon: Users },
+    ...(user?.role === "admin" || user?.role === "superadmin"
+      ? [
+          { href: "/dashboard/users", label: "Users", icon: Users },
+          { href: "/dashboard/bookings", label: "Bookings", icon: BarChart3 },
+        ]
+      : []),
+    ...(user?.role === "staff" || user?.role === "superadmin"
+      ? [{ href: "/dashboard/tasks", label: "My Tasks", icon: Briefcase }]
+      : []),
     ...(user?.role === "superadmin" ? [{ href: "/superadmin/dashboard", label: "Superadmin", icon: ShieldAlert }] : []),
     { href: "/dashboard/settings", label: "Settings", icon: Settings },
   ]

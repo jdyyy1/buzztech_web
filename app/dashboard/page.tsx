@@ -1,6 +1,7 @@
 "use client"
 
-import { Users, Briefcase, ArrowRight, Settings } from "lucide-react"
+import { useState } from "react"
+import { Users, Briefcase, ArrowRight, Settings, X } from "lucide-react"
 import { Card } from "@/components/ui/card"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
@@ -14,15 +15,36 @@ const quickActions = [
 export default function DashboardPage() {
   const router = useRouter()
   const { user } = useAuth()
+  const [showWelcome, setShowWelcome] = useState(true)
 
   const getDisplayName = () => {
     if (!user) return ""
     if (user.role === "admin") return "Admin"
     
-    // For staff and others, get only the first name
     const fullName = user.name || ""
     return fullName.split(" ")[0]
   }
+
+  const getQuickActions = () => {
+    if (user?.role === "staff") {
+      return [
+        { title: "My Tasks", description: "View your active and pending tasks", icon: Briefcase, href: "/dashboard/tasks" },
+        { title: "System Alerts", description: "Check system updates and notices", icon: Settings, href: "/dashboard/settings" },
+      ]
+    }
+    
+    if (user?.role === "admin" || user?.role === "superadmin") {
+      return [
+        { title: "Manage Users", description: "View and edit user accounts", icon: Users, href: "/dashboard/users" },
+        { title: "Manage Bookings", description: "Handle pending and active bookings", icon: Briefcase, href: "/dashboard/bookings" },
+        { title: "System Settings", description: "Configure system parameters", icon: Settings, href: "/dashboard/settings" },
+      ]
+    }
+    
+    return quickActions
+  }
+
+  const actions = getQuickActions()
 
   return (
     <div className="p-8 space-y-8">
@@ -41,19 +63,49 @@ export default function DashboardPage() {
         )}
       </div>
 
-      <div className="bg-accent/30 p-6 rounded-xl border border-border">
-        <h2 className="text-lg font-semibold mb-2">Welcome back, {getDisplayName()}!</h2>
-        <p className="text-sm text-muted-foreground">
-          You are logged in as <span className="font-bold text-foreground uppercase">{user?.role}</span>.
-          Use the quick actions below or the sidebar to manage the platform.
-        </p>
-      </div>
+      {showWelcome && (
+        <div className="bg-accent/30 p-6 rounded-xl border border-border relative group">
+          <button 
+            onClick={() => setShowWelcome(false)}
+            className="absolute top-4 right-4 p-1 rounded-full hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
+            title="Dismiss"
+          >
+            <X className="w-5 h-5" />
+          </button>
+          <h2 className="text-lg font-semibold mb-2">Welcome back, {getDisplayName()}!</h2>
+          <p className="text-sm text-muted-foreground pr-8">
+            You are logged in as <span className="font-bold text-foreground uppercase">{user?.role}</span>.
+            {user?.role === "staff" ? " Check your tasks and pending requests below." : " Use the quick actions below or the sidebar to manage the platform."}
+          </p>
+        </div>
+      )}
+
+      {/* Role-specific stats/notifications */}
+      {user?.role === "staff" && (
+        <div className="bg-primary/5 border border-primary/20 p-4 rounded-lg flex items-center justify-between">
+          <div className="flex items-center gap-3 text-primary">
+            <div className="bg-primary/20 p-2 rounded-full">
+              <Briefcase className="w-5 h-5" />
+            </div>
+            <div>
+              <p className="font-semibold text-sm">New Request Alert!</p>
+              <p className="text-xs opacity-80">There are pending bookings available for handling.</p>
+            </div>
+          </div>
+          <button 
+            onClick={() => router.push("/dashboard/tasks")}
+            className="text-xs font-bold hover:underline"
+          >
+            VIEW ALL
+          </button>
+        </div>
+      )}
 
       {/* Quick Actions */}
       <div>
         <h2 className="text-xl font-bold mb-4">Quick Actions</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {quickActions.map((action) => {
+          {actions.map((action) => {
             const Icon = action.icon
             return (
               <Card 
