@@ -2,7 +2,8 @@ export interface User {
   user_id: string
   name: string
   email: string
-  password_hash: string
+  password_hash?: string
+  password_temp?: string
   role: "admin" | "staff" | "client" | "superadmin"
   profile_image?: string
   status: "active" | "inactive" | "suspended"
@@ -10,34 +11,36 @@ export interface User {
   last_login: Date
 }
 
-export interface Employee {
-  id: string
-  name: string
-  email: string
-  phone: string
-  role: string
-  status: "active" | "inactive"
-  created_at: Date
-}
-
 export interface Booking {
   id: string
-  user_id: string
-  service_id: string
-  employee_id: string
-  start_time: Date
-  end_time: Date
-  status: "pending" | "confirmed" | "completed" | "cancelled"
-  created_at: Date
+  userId: string
+  serviceId: string
+  serviceName: string
+  developerId?: string // This is where assigned staff ID goes
+  developerName?: string
+  totalAmount: number
+  paidAmount: number
+  status: "PENDING" | "ACTIVE" | "COMPLETED" | "CANCELLED"
+  bookingDate: any // Firestore Timestamp
+  completionDate?: any // Firestore Timestamp
+  description: string
+  timeline?: string
+  budget?: string
+  submission_urls?: string[]
+  is_client_approved?: boolean
 }
 
 export interface Payment {
   id: string
-  booking_id: string
+  paymentId: string
+  bookingId: string
+  userId: string
+  projectName: string
   amount: number
-  status: "pending" | "completed" | "failed"
-  payment_method: string
-  created_at: Date
+  totalAmount: number
+  status: string
+  createdAt: any // Firestore Timestamp
+  balanceDue: number
 }
 
 export interface Service {

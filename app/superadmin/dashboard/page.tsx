@@ -1,44 +1,19 @@
 "use client"
 
-import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, BarChart, Bar } from "recharts"
-import { Users, Briefcase, TrendingUp, BarChart3 } from "lucide-react"
+import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, BarChart, Bar, PieChart, Pie, Cell } from "recharts"
+import { Users, Briefcase, TrendingUp, BarChart3, CheckCircle, Clock } from "lucide-react"
 import { Card } from "@/components/ui/card"
 import { useEffect, useState } from "react"
 import { useAuth } from "@/lib/auth-context"
 import { useRouter } from "next/navigation"
 
-// Original mock data
-const statData = [
-  { label: "Total Users", value: "1,247", change: "+12% this week", icon: Users, color: "bg-blue-50" },
-  { label: "Active Projects", value: "89", change: "+6% this week", icon: Briefcase, color: "bg-amber-50" },
-]
-
-const revenueData = [
-  { label: "Commission", value: "₱45,890", change: "+11%", color: "bg-green-100 text-green-700" },
-  { label: "AI Revenue", value: "₱12,340", change: "This month", color: "bg-amber-100 text-amber-700" },
-]
-
-const monthlyData = [
-  { month: "Jan", value: 15000 },
-  { month: "Feb", value: 18000 },
-  { month: "Mar", value: 20000 },
-  { month: "Apr", value: 22000 },
-  { month: "May", value: 25000 },
-  { month: "Jun", value: 24000 },
-]
-
-const breakdownData = [
-  { name: "Design", value: 24405, fill: "var(--color-chart-1)" },
-  { name: "Development", value: 13767, fill: "var(--color-chart-2)" },
-  { name: "Consulting", value: 6883, fill: "var(--color-chart-3)" },
-  { name: "Ad Revenue", value: 2295, fill: "var(--color-chart-4)" },
-]
+const COLORS = ["var(--color-chart-1)", "var(--color-chart-2)", "var(--color-chart-3)", "var(--color-chart-4)"]
 
 export default function SuperAdminDashboard() {
   const { user, loading } = useAuth()
   const router = useRouter()
-  const [userCount, setUserCount] = useState<number | null>(null)
-  const [userCountError, setUserCountError] = useState<string | null>(null)
+  const [analytics, setAnalytics] = useState<any>(null)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!loading && (!user || user.role !== "superadmin")) {
@@ -46,109 +21,202 @@ export default function SuperAdminDashboard() {
       return
     }
 
-    const load = async () => {
+    const loadAnalytics = async () => {
       try {
-        const res = await fetch("/api/users/count")
+        const res = await fetch("/api/analytics/superadmin")
+        if (!res.ok) throw new Error("Failed to load analytics")
         const data = await res.json()
-        if (!res.ok) throw new Error(data.error || "Failed to load user count")
-        setUserCount(data.count)
+        setAnalytics(data)
       } catch (e) {
-        setUserCountError(e instanceof Error ? e.message : "Unknown error")
+        setError(e instanceof Error ? e.message : "Unknown error")
       }
     }
-    load()
+    loadAnalytics()
   }, [user, loading, router])
 
   if (loading || !user || user.role !== "superadmin") {
     return (
       <div className="flex h-screen items-center justify-center">
-        <p className="text-muted-foreground">Loading...</p>
+        <p className="text-muted-foreground">Loading dashboard...</p>
       </div>
     )
   }
 
+  if (error) {
+    return (
+      <div className="p-8 text-center">
+        <p className="text-destructive font-bold">Error: {error}</p>
+        <button onClick={() => window.location.reload()} className="mt-4 text-primary underline">Try again</button>
+      </div>
+    )
+  }
+
+  const clientData = [
+    { name: "Active", value: analytics?.clients.active || 0 },
+    { name: "Inactive", value: analytics?.clients.inactive || 0 },
+  ]
+
   return (
-    <div className="p-8 space-y-8">
-      <div>
-        <h1 className="text-3xl font-bold text-foreground">Superadmin Dashboard</h1>
-        <p className="text-muted-foreground mt-2">BUZZ TECH Management</p>
-      </div>
-
-      {/* Stats Grid - 1:1 Replica */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {[{ label: "Total Users", value: userCount?.toLocaleString() ?? "—", change: userCountError ? userCountError : "+12% this week", icon: Users, color: "bg-blue-50" }, ...statData.filter((s) => s.label !== "Total Users")].map((stat) => {
-          const Icon = stat.icon
-          return (
-            <Card key={stat.label} className="p-6">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">{stat.label}</p>
-                  <p className="text-3xl font-bold mt-2">{stat.value}</p>
-                  <p className="text-xs text-success mt-2">↑ {stat.change}</p>
-                </div>
-                <div className={`p-3 rounded-lg ${stat.color}`}>
-                  <Icon className="w-6 h-6 text-muted-foreground" />
-                </div>
-              </div>
-            </Card>
-          )
-        })}
-      </div>
-
-      {/* Revenue Overview - 1:1 Replica */}
-      <div>
-        <h2 className="text-xl font-bold mb-4">Revenue Overview</h2>
-        <div className="grid grid-cols-2 gap-4">
-          {revenueData.map((item) => (
-            <Card key={item.label} className={`p-6 ${item.color}`}>
-              <p className="text-sm opacity-75">{item.label}</p>
-              <p className="text-2xl font-bold mt-2">{item.value}</p>
-              <p className="text-xs opacity-60 mt-2">{item.change}</p>
-            </Card>
-          ))}
+    <div className="p-8 space-y-8 pb-16">
+      <div className="flex justify-between items-center">
+        <div>
+          <h1 className="text-3xl font-bold text-foreground">Superadmin Dashboard</h1>
+          <p className="text-muted-foreground mt-2">Platform-wide Revenue & Performance Analytics</p>
+        </div>
+        <div className="text-right">
+          <p className="text-sm font-medium text-muted-foreground">System Status</p>
+          <div className="flex items-center gap-2 text-green-500 justify-end">
+            <div className="w-2 h-2 rounded-full bg-current animate-pulse" />
+            <span className="text-xs font-bold uppercase">Live</span>
+          </div>
         </div>
       </div>
 
-      {/* Monthly Revenue Trend - 1:1 Replica */}
-      <Card className="p-6">
-        <h2 className="text-lg font-bold mb-6">Monthly Revenue Trend</h2>
-        <ResponsiveContainer width="100%" height={300}>
-          <LineChart data={monthlyData}>
-            <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
-            <XAxis dataKey="month" />
-            <YAxis />
-            <Tooltip />
-            <Line type="monotone" dataKey="value" stroke="var(--color-accent)" strokeWidth={2} />
-          </LineChart>
-        </ResponsiveContainer>
-      </Card>
-
-      {/* Additional Analytics from Revenue Page */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* Primary Stats Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <Card className="p-6">
-          <h3 className="font-semibold mb-4">Revenue Breakdown</h3>
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={breakdownData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
-              <XAxis dataKey="name" />
-              <YAxis />
-              <Tooltip />
-              <Bar dataKey="value" fill="var(--color-chart-1)" />
-            </BarChart>
-          </ResponsiveContainer>
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="text-xs text-muted-foreground font-bold uppercase tracking-wider">Daily Revenue</p>
+              <p className="text-2xl font-bold mt-2">₱{(analytics?.revenue.daily || 0).toLocaleString()}</p>
+            </div>
+            <div className="p-2 rounded-lg bg-green-50">
+              <TrendingUp className="w-5 h-5 text-green-600" />
+            </div>
+          </div>
+        </Card>
+        <Card className="p-6">
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="text-xs text-muted-foreground font-bold uppercase tracking-wider">Monthly Revenue</p>
+              <p className="text-2xl font-bold mt-2">₱{(analytics?.revenue.monthly || 0).toLocaleString()}</p>
+            </div>
+            <div className="p-2 rounded-lg bg-blue-50">
+              <BarChart3 className="w-5 h-5 text-blue-600" />
+            </div>
+          </div>
+        </Card>
+        <Card className="p-6">
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="text-xs text-muted-foreground font-bold uppercase tracking-wider">Total Clients</p>
+              <p className="text-2xl font-bold mt-2">{analytics?.clients.total || 0}</p>
+            </div>
+            <div className="p-2 rounded-lg bg-purple-50">
+              <Users className="w-5 h-5 text-purple-600" />
+            </div>
+          </div>
+        </Card>
+        <Card className="p-6">
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="text-xs text-muted-foreground font-bold uppercase tracking-wider">Success Rate</p>
+              <p className="text-2xl font-bold mt-2">{analytics?.projects.successRate || 0}%</p>
+            </div>
+            <div className="p-2 rounded-lg bg-orange-50">
+              <CheckCircle className="w-5 h-5 text-orange-600" />
+            </div>
+          </div>
+        </Card>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Monthly Revenue Trend */}
+        <Card className="p-6 lg:col-span-2">
+          <h2 className="text-lg font-bold mb-6">Revenue Trend (Month-to-Month)</h2>
+          <div className="h-[300px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={analytics?.revenue.monthlyTrend || []}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--color-border)" />
+                <XAxis dataKey="month" />
+                <YAxis tickFormatter={(val) => `₱${val/1000}k`} />
+                <Tooltip formatter={(val) => `₱${val.toLocaleString()}`} />
+                <Line type="monotone" dataKey="value" stroke="var(--color-primary)" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
         </Card>
 
+        {/* Client Status Breakdown */}
         <Card className="p-6">
-          <h3 className="font-semibold mb-4">Monthly Comparison</h3>
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={monthlyData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
-              <XAxis dataKey="month" />
-              <YAxis />
-              <Tooltip />
-              <Bar dataKey="value" fill="var(--color-accent)" />
-            </BarChart>
-          </ResponsiveContainer>
+          <h2 className="text-lg font-bold mb-6">Client Activity</h2>
+          <div className="h-[250px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={clientData}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={60}
+                  outerRadius={80}
+                  paddingAngle={5}
+                  dataKey="value"
+                >
+                  {clientData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={index === 0 ? "var(--color-primary)" : "var(--color-muted)"} />
+                  ))}
+                </Pie>
+                <Tooltip />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="flex justify-center gap-4 mt-4">
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-full bg-primary" />
+              <span className="text-xs">Active ({analytics?.clients.active})</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-full bg-muted" />
+              <span className="text-xs">Inactive ({analytics?.clients.inactive})</span>
+            </div>
+          </div>
+        </Card>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Most Popular Services */}
+        <Card className="p-6">
+          <h2 className="text-lg font-bold mb-6 flex items-center gap-2">
+            <Briefcase className="w-5 h-5 text-primary" /> Popular Services
+          </h2>
+          <div className="h-[300px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={analytics?.projects.servicePopularity || []} layout="vertical">
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="var(--color-border)" />
+                <XAxis type="number" />
+                <YAxis dataKey="name" type="category" width={100} />
+                <Tooltip />
+                <Bar dataKey="value" fill="var(--color-chart-2)" radius={[0, 4, 4, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </Card>
+
+        {/* Staff Workload */}
+        <Card className="p-6">
+          <h2 className="text-lg font-bold mb-6 flex items-center gap-2">
+            <Clock className="w-5 h-5 text-primary" /> Active Staff Workload
+          </h2>
+          <div className="space-y-4">
+            {(analytics?.projects.staffWorkload || []).length > 0 ? (
+              analytics?.projects.staffWorkload.map((staff: any, idx: number) => (
+                <div key={idx} className="space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="font-medium">{staff.name}</span>
+                    <span className="text-muted-foreground">{staff.value} active tasks</span>
+                  </div>
+                  <div className="h-2 bg-accent rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-primary transition-all" 
+                      style={{ width: `${Math.min((staff.value / 10) * 100, 100)}%` }}
+                    />
+                  </div>
+                </div>
+              ))
+            ) : (
+              <p className="text-center text-muted-foreground py-12">No active assignments</p>
+            )}
+          </div>
         </Card>
       </div>
     </div>

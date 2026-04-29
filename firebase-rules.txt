@@ -2,155 +2,101 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // ---- ADMIN CHECK ----
+    // ---- AUTH HELPERS ----
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
     function isAdmin() {
-      return request.auth != null &&
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role
-          in ['admin', 'superadmin'];
+      return isSignedIn() && 
+        getUserData().role in ['admin', 'superadmin'];
+    }
+
+    function isStaff() {
+      return isSignedIn() && 
+        getUserData().role == 'staff';
     }
 
     // ---- USERS COLLECTION ----
     match /users/{userId} {
-      allow read: if request.auth != null;
-      allow create: if request.auth != null;
-
-      allow update: if request.auth != null &&
-        (request.auth.uid == userId || isAdmin());
-
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update: if isSignedIn() && (request.auth.uid == userId || isAdmin());
       allow delete: if false;
     }
 
     // ---- SERVICES COLLECTION ----
     match /services/{serviceId} {
-
-      // Anyone authenticated can read
-      allow read: if request.auth != null;
-
-      // ---- MERGED UPDATE RULE ----
-      allow update: if
-        // Admin can do full update
-        isAdmin()
-        ||
-        // Normal users can only update projectCount + totalRating
-        (
-          request.auth != null &&
-          (
-            request.resource.data.keys().hasOnly(['projectCount', 'totalRating']) ||
-            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['projectCount', 'totalRating'])
-          )
-        );
-
-      // Only admin can create or delete
+      allow read: if isSignedIn();
+      allow update: if isAdmin() || (isSignedIn() && (
+        request.resource.data.keys().hasOnly(['projectCount', 'totalRating'])
+      ));
       allow create, delete: if isAdmin();
 
-      // ----- RATINGS SUBCOLLECTION -----
       match /ratings/{ratingId} {
-        allow create: if request.auth != null;
-        allow read: if request.auth != null;
+        allow create, read: if isSignedIn();
         allow update, delete: if false;
       }
     }
 
     // ---- BOOKINGS ----
     match /bookings/{bookingId} {
-      allow read: if request.auth != null &&
-        (request.auth.uid == resource.data.userId || 
-         isAdmin() ||
-         (resource.data.status == 'COMPLETED'));
+      // Permission for reading: 
+      // 1. Client owns it
+      // 2. Staff is assigned to it
+      // 3. Admin/Superadmin
+      // 4. Staff can see PENDING requests to accept them
+      allow read: if isSignedIn() && (
+        request.auth.uid == resource.data.userId || 
+        request.auth.uid == resource.data.developerId || 
+        isAdmin() ||
+        (isStaff() && resource.data.status == 'PENDING') ||
+        resource.data.status == 'COMPLETED'
+      );
 
-      allow create: if request.auth != null &&
-        request.auth.uid == request.resource.data.userId;
+      allow create: if isSignedIn();
 
-      allow update: if request.auth != null &&
-        (request.auth.uid == resource.data.userId || isAdmin());
+      allow update: if isSignedIn() && (
+        request.auth.uid == resource.data.userId || 
+        request.auth.uid == resource.data.developerId || 
+        isAdmin()
+      );
 
-      allow delete: if request.auth != null &&
-        (
-          (request.auth.uid == resource.data.userId && resource.data.status == 'PENDING')
-          || isAdmin()
-        );
+      allow delete: if isAdmin() || (isSignedIn() && request.auth.uid == resource.data.userId && resource.data.status == 'PENDING');
     }
 
-    // ---- REQUESTS ----
+    // ---- REQUESTS (LEGACY SUPPORT) ----
     match /requests/{requestId} {
-      allow read: if request.auth.uid == resource.data.user_id ||
-                  request.auth.uid == resource.data.assigned_to;
-
-      allow create: if request.auth != null;
-
-      allow update: if request.auth.uid == resource.data.user_id ||
-                    request.auth.uid == resource.data.assigned_to;
-
-      allow delete: if request.auth.uid == resource.data.user_id;
-
-      match /messages/{messageId} {
-        allow read: if request.auth.uid == resource.data.sender_id ||
-                    request.auth.uid == resource.data.user_id;
-
-        allow create: if request.auth != null;
-
-        allow update, delete: if request.auth.uid == resource.data.sender_id;
-      }
-
-      match /feedback/{feedbackId} {
-        allow read, update, delete: if request.auth.uid == resource.data.user_id;
-        allow create: if request.auth != null;
-      }
-    }
-
-    // ---- ANNOUNCEMENTS ----
-    match /announcements/{announcementId} {
-      allow read: if request.auth != null;
-      allow create, update, delete: if isAdmin();
-    }
-
-    // ---- AUDIT LOGS ----
-    match /audit_logs/{logId} {
-      allow read: if isAdmin();
-      allow create: if request.auth != null;
-      allow update, delete: if false;
-    }
-
-    // ---- PAYMENTS ----
-    match /payments/{paymentId} {
-      allow read: if request.auth != null &&
-        (request.auth.uid == resource.data.userId || isAdmin());
-
-      allow create: if request.auth != null &&
-        request.auth.uid == request.resource.data.userId;
-
-      allow update: if request.auth != null &&
-        (request.auth.uid == resource.data.userId || isAdmin());
-
-      allow delete: if false;
+      allow read, update: if isSignedIn() && (
+        request.auth.uid == resource.data.user_id || 
+        request.auth.uid == resource.data.assigned_to || 
+        isAdmin()
+      );
+      allow create: if isSignedIn();
+      allow delete: if isAdmin();
     }
 
     // ---- NOTIFICATIONS ----
     match /notifications/{notificationId} {
-      // Users can read their own notifications
-      allow read: if request.auth != null &&
-        request.auth.uid == resource.data.userId;
-
-      // System can create notifications (via backend/cloud functions)
-      allow create: if request.auth != null;
-
-      // Users can update their own notifications (to mark as read)
-      allow update: if request.auth != null &&
-        request.auth.uid == resource.data.userId;
-
-      // Prevent deletion
+      allow read: if isSignedIn() && request.auth.uid == resource.data.userId;
+      allow create: if isSignedIn();
+      allow update: if isSignedIn() && request.auth.uid == resource.data.userId;
       allow delete: if false;
     }
 
-    // ---- SYSTEM CONFIG ----
-    match /system_config/{docId} {
-      allow read: if request.auth != null;
-      allow write: if isAdmin();
+    // ---- PAYMENTS & CONFIG ----
+    match /payments/{paymentId} {
+      allow read: if isSignedIn() && (request.auth.uid == resource.data.userId || isAdmin());
+      allow create: if isSignedIn();
     }
 
-    // ---- DENY EVERYTHING ELSE ----
-    match /{document=**} {
-      allow read, write: if false;
+    match /system_config/{docId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
     }
   }
 }
