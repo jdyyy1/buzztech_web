@@ -1,7 +1,7 @@
 "use client"
 
-import { useState } from "react"
-import { Search, ChevronRight, UserPlus, Mail, Lock, User as UserIcon } from "lucide-react"
+import { useState, useEffect } from "react"
+import { Search, ChevronRight, UserPlus, Mail, Lock, User as UserIcon, Shield, MapPin, Calendar, Activity } from "lucide-react"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -15,83 +15,88 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
-
-const users = [
-  {
-    id: 1,
-    name: "John Lapas",
-    email: "john.lapas@mail.com",
-    communications: 5,
-    projects: 12,
-    status: "Active",
-    statusColor: "bg-green-100 text-green-700",
-  },
-  {
-    id: 2,
-    name: "Dos Trigin",
-    email: "dos.trigin@mail.com",
-    communications: 3,
-    projects: 8,
-    status: "Inactive",
-    statusColor: "bg-red-100 text-red-700",
-  },
-  {
-    id: 3,
-    name: "Edmon Garcia",
-    email: "edmon.garcia@mail.com",
-    communications: 8,
-    projects: 16,
-    status: "Active",
-    statusColor: "bg-green-100 text-green-700",
-  },
-  {
-    id: 4,
-    name: "Miko Hedking",
-    email: "miko.h@mail.com",
-    communications: 2,
-    projects: 4,
-    status: "Inactive",
-    statusColor: "bg-red-100 text-red-700",
-  },
-]
+import { db } from "@/lib/firebase"
+import { collection, query, where, onSnapshot } from "firebase/firestore"
+import { User } from "@/lib/models"
+import { toast } from "sonner"
+import { Badge } from "@/components/ui/badge"
 
 export default function UsersPage() {
   const [searchTerm, setSearchTerm] = useState("")
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
+  const [clients, setClients] = useState<User[]>([])
+  const [loading, setLoading] = useState(true)
+  const [selectedUser, setSelectedUser] = useState<User | null>(null)
+  
+  // Form State
+  const [formData, setFormData] = useState({ name: "", email: "", password: "" })
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
-  const filteredUsers = users.filter(
-    (user) =>
-      user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      user.email.toLowerCase().includes(searchTerm.toLowerCase()),
-  )
+  useEffect(() => {
+    // Listen for users with role 'client'
+    const q = query(collection(db, "users"), where("role", "==", "client"))
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const usersData = snapshot.docs.map(doc => ({
+        ...doc.data(),
+        user_id: doc.id
+      })) as User[]
+      setClients(usersData)
+      setLoading(false)
+    })
 
-  const handleCreateStaff = (e: React.FormEvent) => {
+    return () => unsubscribe()
+  }, [])
+
+  const handleCreateStaff = async (e: React.FormEvent) => {
     e.preventDefault()
-    // Logic to create staff in Firebase would go here
-    setIsCreateDialogOpen(false)
-    alert("Staff created successfully! (Mock)")
+    setIsSubmitting(true)
+
+    try {
+      const res = await fetch("/api/users/staff/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(formData)
+      })
+
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Failed to create staff")
+
+      toast.success("Staff member created successfully!")
+      setIsCreateDialogOpen(false)
+      setFormData({ name: "", email: "", password: "" })
+    } catch (error: any) {
+      toast.error(error.message)
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
+  const filteredUsers = clients.filter(
+    (user) =>
+      user.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      user.email?.toLowerCase().includes(searchTerm.toLowerCase()),
+  )
+
   return (
-    <div className="p-8 space-y-6">
+    <div className="p-8 space-y-6 pb-24">
       <div className="flex justify-between items-end">
         <div>
-          <h1 className="text-3xl font-bold">Users</h1>
-          <p className="text-muted-foreground">Manage and view user accounts</p>
+          <h1 className="text-3xl font-bold">Client Management</h1>
+          <p className="text-muted-foreground">View and manage registered clients</p>
         </div>
         
         <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
           <DialogTrigger asChild>
             <Button className="gap-2 bg-primary hover:bg-primary/90">
-              <UserPlus className="w-4 h-4" /> Create Staff
+              <UserPlus className="w-4 h-4" /> Add New Staff
             </Button>
           </DialogTrigger>
           <DialogContent className="sm:max-w-[425px]">
             <form onSubmit={handleCreateStaff}>
               <DialogHeader>
-                <DialogTitle>Create New Staff</DialogTitle>
+                <DialogTitle>Create Staff Account</DialogTitle>
                 <DialogDescription>
-                  Enter the details for the new staff member. They will use these credentials to log in.
+                  This will create an account in both Firebase Auth and Firestore.
                 </DialogDescription>
               </DialogHeader>
               <div className="grid gap-4 py-4">
@@ -99,73 +104,182 @@ export default function UsersPage() {
                   <Label htmlFor="name">Full Name</Label>
                   <div className="relative">
                     <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                    <Input id="name" placeholder="John Doe" className="pl-10" required />
+                    <Input 
+                      id="name" 
+                      placeholder="John Doe" 
+                      className="pl-10" 
+                      required 
+                      value={formData.name}
+                      onChange={(e) => setFormData({...formData, name: e.target.value})}
+                    />
                   </div>
                 </div>
                 <div className="grid gap-2">
                   <Label htmlFor="email">Email Address</Label>
                   <div className="relative">
                     <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                    <Input id="email" type="email" placeholder="john@buzztech.com" className="pl-10" required />
+                    <Input 
+                      id="email" 
+                      type="email" 
+                      placeholder="staff@buzztech.com" 
+                      className="pl-10" 
+                      required 
+                      value={formData.email}
+                      onChange={(e) => setFormData({...formData, email: e.target.value})}
+                    />
                   </div>
                 </div>
                 <div className="grid gap-2">
                   <Label htmlFor="password">Password</Label>
                   <div className="relative">
                     <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                    <Input id="password" type="password" placeholder="••••••••" className="pl-10" required />
+                    <Input 
+                      id="password" 
+                      type="password" 
+                      placeholder="••••••••" 
+                      className="pl-10" 
+                      required 
+                      value={formData.password}
+                      onChange={(e) => setFormData({...formData, password: e.target.value})}
+                    />
                   </div>
                 </div>
               </div>
               <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
-                  Cancel
+                <Button type="submit" disabled={isSubmitting}>
+                  {isSubmitting ? "Creating..." : "Create Account"}
                 </Button>
-                <Button type="submit">Create Account</Button>
               </DialogFooter>
             </form>
           </DialogContent>
         </Dialog>
       </div>
 
-      {/* Search */}
       <div className="relative">
         <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-5 h-5" />
         <Input
-          placeholder="Search users..."
+          placeholder="Search clients by name or email..."
           className="pl-10 py-2 w-full"
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
         />
       </div>
 
-      {/* Users List */}
-      <div className="space-y-3">
-        {filteredUsers.map((user) => (
-          <Card key={user.id} className="p-4 hover:shadow-md transition-shadow cursor-pointer">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-1 gap-4">
+        {loading ? (
+          <p className="text-center py-12 text-muted-foreground">Fetching clients...</p>
+        ) : filteredUsers.map((user) => (
+          <Card 
+            key={user.user_id} 
+            className="p-4 hover:shadow-md transition-all cursor-pointer border-l-4 border-l-transparent hover:border-l-primary"
+            onClick={() => setSelectedUser(user)}
+          >
             <div className="flex items-center justify-between">
-              <div>
-                <p className="font-semibold">{user.name}</p>
-                <p className="text-sm text-muted-foreground">{user.email}</p>
-                <div className="flex gap-6 mt-2 text-xs">
-                  <span className="text-muted-foreground">
-                    Communications: <span className="font-semibold">{user.communications}</span>
-                  </span>
-                  <span className="text-muted-foreground">
-                    Projects: <span className="font-semibold">{user.projects}</span>
-                  </span>
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-full bg-accent flex items-center justify-center overflow-hidden">
+                  {user.profile_image ? (
+                    <img src={user.profile_image} alt="" className="w-full h-full object-cover" />
+                  ) : (
+                    <UserIcon className="w-6 h-6 text-muted-foreground" />
+                  )}
+                </div>
+                <div>
+                  <p className="font-bold text-lg">{user.name}</p>
+                  <p className="text-sm text-muted-foreground">{user.email}</p>
                 </div>
               </div>
-              <div className="flex items-center gap-4">
-                <span className={`px-3 py-1 rounded-full text-xs font-semibold ${user.statusColor}`}>
-                  {user.status}
-                </span>
+              <div className="flex items-center gap-6">
+                <div className="text-right hidden md:block">
+                  <p className="text-xs text-muted-foreground uppercase font-bold tracking-tighter">Status</p>
+                  <div className="flex items-center gap-2 justify-end">
+                    <div className={`w-2 h-2 rounded-full ${user.status === 'active' ? 'bg-green-500 animate-pulse' : 'bg-gray-400'}`} />
+                    <span className={`text-sm font-bold capitalize ${user.status === 'active' ? 'text-green-600' : 'text-muted-foreground'}`}>
+                      {user.status || 'inactive'}
+                    </span>
+                  </div>
+                </div>
                 <ChevronRight className="w-5 h-5 text-muted-foreground" />
               </div>
             </div>
           </Card>
         ))}
       </div>
+
+      {/* User Details Drawer/Dialog */}
+      <Dialog open={!!selectedUser} onOpenChange={(open) => !open && setSelectedUser(null)}>
+        <DialogContent className="sm:max-w-[500px]">
+          {selectedUser && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2 text-2xl">
+                  <UserIcon className="w-6 h-6 text-primary" /> Profile Details
+                </DialogTitle>
+              </DialogHeader>
+              <div className="py-6 space-y-6">
+                <div className="flex items-center gap-4 p-4 bg-accent/30 rounded-xl">
+                   <div className="w-20 h-20 rounded-full bg-white shadow-sm flex items-center justify-center overflow-hidden border-2 border-primary/20">
+                      {selectedUser.profile_image ? (
+                        <img src={selectedUser.profile_image} alt="" className="w-full h-full object-cover" />
+                      ) : (
+                        <UserIcon className="w-10 h-10 text-muted-foreground" />
+                      )}
+                   </div>
+                   <div>
+                     <h3 className="text-xl font-bold">{selectedUser.name}</h3>
+                     <Badge variant={selectedUser.status === 'active' ? 'default' : 'secondary'} className="mt-1">
+                       {selectedUser.status?.toUpperCase() || 'INACTIVE'}
+                     </Badge>
+                     <p className="text-xs text-muted-foreground mt-1 italic">ID: {selectedUser.user_id}</p>
+                   </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <p className="text-xs font-bold text-muted-foreground uppercase flex items-center gap-1">
+                      <Mail className="w-3 h-3" /> Email
+                    </p>
+                    <p className="text-sm font-medium break-all">{selectedUser.email}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs font-bold text-muted-foreground uppercase flex items-center gap-1">
+                      <Shield className="w-3 h-3" /> Role
+                    </p>
+                    <p className="text-sm font-medium capitalize">{selectedUser.role}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs font-bold text-muted-foreground uppercase flex items-center gap-1">
+                      <Calendar className="w-3 h-3" /> Member Since
+                    </p>
+                    <p className="text-sm font-medium">
+                      {selectedUser.created_at ? new Date(selectedUser.created_at as any).toLocaleDateString() : 'N/A'}
+                    </p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs font-bold text-muted-foreground uppercase flex items-center gap-1">
+                      <Activity className="w-3 h-3" /> Last Active
+                    </p>
+                    <p className="text-sm font-medium">
+                       {selectedUser.last_login ? new Date(selectedUser.last_login as any).toLocaleString() : 'Recently'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="pt-4 border-t">
+                  <p className="text-xs font-bold text-muted-foreground uppercase mb-2">Account Actions</p>
+                  <div className="flex gap-2">
+                    <Button variant="outline" size="sm" className="flex-1 text-orange-600 border-orange-200 hover:bg-orange-50">
+                      Suspend Account
+                    </Button>
+                    <Button variant="outline" size="sm" className="flex-1 text-destructive border-red-200 hover:bg-red-50">
+                      Delete Data
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
