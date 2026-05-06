@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Briefcase, CheckCircle2, Clock, MessageSquare, Send, FileText, ExternalLink } from "lucide-react"
+import { Clock, Send, FileText, ExternalLink } from "lucide-react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -34,7 +34,17 @@ export default function StaffTasksPage() {
   const [isSubmitDialogOpen, setIsSubmitDialogOpen] = useState(false)
 
   useEffect(() => {
-    if (!user) return
+    if (!user || !db) {
+      setLoading(false)
+      return
+    }
+
+    const staffId = user.user_id || user.id
+    if (!staffId) {
+      setLoading(false)
+      toast.error("Unable to load tasks. Missing user ID.")
+      return
+    }
 
     // Available Requests (PENDING and no developerId)
     const availableQuery = query(
@@ -46,7 +56,7 @@ export default function StaffTasksPage() {
     // My Tasks (Assigned to me and not COMPLETED/CANCELLED)
     const tasksQuery = query(
       collection(db, "bookings"),
-      where("developerId", "==", user.user_id)
+      where("developerId", "==", staffId)
     )
 
     const unsubAvailable = onSnapshot(availableQuery, (snapshot) => {
