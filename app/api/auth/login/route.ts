@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { adminAuth, adminDb } from "@/lib/firebase-admin"
+import { FieldValue } from "firebase-admin/firestore"
 
 export async function POST(request: NextRequest) {
   try {
@@ -37,6 +38,14 @@ export async function POST(request: NextRequest) {
     if (storedPassword && storedPassword === providedPassword) {
       console.log(`[Login API] Password matched. Creating custom token for ${userId}...`)
       try {
+        await adminDb.collection("users").doc(userId).set(
+          {
+            last_login: FieldValue.serverTimestamp(),
+            status: "active",
+          },
+          { merge: true },
+        )
+
         const token = await adminAuth.createCustomToken(userId)
         return NextResponse.json({
           token,

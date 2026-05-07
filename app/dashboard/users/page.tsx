@@ -21,6 +21,48 @@ import { User } from "@/lib/models"
 import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
 
+const toDate = (value: any): Date | null => {
+  if (!value) return null
+
+  if (value instanceof Date) return value
+  if (typeof value?.toDate === "function") return value.toDate()
+
+  if (typeof value === "number") {
+    const ms = value < 1_000_000_000_000 ? value * 1000 : value
+    const parsed = new Date(ms)
+    return Number.isNaN(parsed.getTime()) ? null : parsed
+  }
+
+  if (typeof value === "string") {
+    const parsed = new Date(value)
+    return Number.isNaN(parsed.getTime()) ? null : parsed
+  }
+
+  return null
+}
+
+const getStatus = (user: any): "active" | "inactive" | "suspended" => {
+  const rawStatus = String(user.status || user.accountStatus || "").toLowerCase()
+  if (rawStatus === "suspended") return "suspended"
+
+  const lastSeen =
+    toDate(user.last_login) ||
+    toDate(user.lastLogin) ||
+    toDate(user.last_active) ||
+    toDate(user.lastActive)
+
+  // If we have activity timestamps, treat status as activity-based.
+  if (lastSeen) {
+    const THIRTY_MINUTES_MS = 30 * 60 * 1000
+    return Date.now() - lastSeen.getTime() <= THIRTY_MINUTES_MS ? "active" : "inactive"
+  }
+
+  // If no activity data exists, fallback to persisted status.
+  if (rawStatus === "active" || rawStatus === "inactive") return rawStatus
+
+  return "inactive"
+}
+
 export default function UsersPage() {
   const [searchTerm, setSearchTerm] = useState("")
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
@@ -168,41 +210,45 @@ export default function UsersPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-1 gap-4">
         {loading ? (
           <p className="text-center py-12 text-muted-foreground">Fetching clients...</p>
-        ) : filteredUsers.map((user) => (
-          <Card 
-            key={user.user_id} 
-            className="p-4 hover:shadow-md transition-all cursor-pointer border-l-4 border-l-transparent hover:border-l-primary"
-            onClick={() => setSelectedUser(user)}
-          >
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-full bg-accent flex items-center justify-center overflow-hidden">
-                  {user.profile_image ? (
-                    <img src={user.profile_image} alt="" className="w-full h-full object-cover" />
-                  ) : (
-                    <UserIcon className="w-6 h-6 text-muted-foreground" />
-                  )}
-                </div>
-                <div>
-                  <p className="font-bold text-lg">{user.name}</p>
-                  <p className="text-sm text-muted-foreground">{user.email}</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-6">
-                <div className="text-right hidden md:block">
-                  <p className="text-xs text-muted-foreground uppercase font-bold tracking-tighter">Status</p>
-                  <div className="flex items-center gap-2 justify-end">
-                    <div className={`w-2 h-2 rounded-full ${user.status === 'active' ? 'bg-green-500 animate-pulse' : 'bg-gray-400'}`} />
-                    <span className={`text-sm font-bold capitalize ${user.status === 'active' ? 'text-green-600' : 'text-muted-foreground'}`}>
-                      {user.status || 'inactive'}
-                    </span>
+        ) : filteredUsers.map((user) => {
+          const status = getStatus(user)
+
+          return (
+            <Card
+              key={user.user_id}
+              className="p-4 hover:shadow-md transition-all cursor-pointer border-l-4 border-l-transparent hover:border-l-primary"
+              onClick={() => setSelectedUser(user)}
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-full bg-accent flex items-center justify-center overflow-hidden">
+                    {user.profile_image ? (
+                      <img src={user.profile_image} alt="" className="w-full h-full object-cover" />
+                    ) : (
+                      <UserIcon className="w-6 h-6 text-muted-foreground" />
+                    )}
+                  </div>
+                  <div>
+                    <p className="font-bold text-lg">{user.name}</p>
+                    <p className="text-sm text-muted-foreground">{user.email}</p>
                   </div>
                 </div>
-                <ChevronRight className="w-5 h-5 text-muted-foreground" />
+                <div className="flex items-center gap-6">
+                  <div className="text-right hidden md:block">
+                    <p className="text-xs text-muted-foreground uppercase font-bold tracking-tighter">Status</p>
+                    <div className="flex items-center gap-2 justify-end">
+                      <div className={`w-2 h-2 rounded-full ${status === "active" ? "bg-green-500 animate-pulse" : "bg-gray-400"}`} />
+                      <span className={`text-sm font-bold capitalize ${status === "active" ? "text-green-600" : "text-muted-foreground"}`}>
+                        {status}
+                      </span>
+                    </div>
+                  </div>
+                  <ChevronRight className="w-5 h-5 text-muted-foreground" />
+                </div>
               </div>
-            </div>
-          </Card>
-        ))}
+            </Card>
+          )
+        })}
       </div>
 
       {/* User Details Drawer/Dialog */}
@@ -210,6 +256,21 @@ export default function UsersPage() {
         <DialogContent className="sm:max-w-[500px]">
           {selectedUser && (
             <>
+              {(() => {
+                const memberSince =
+                  toDate(selectedUser.created_at) ||
+                  toDate((selectedUser as any).createdAt) ||
+                  toDate((selectedUser as any).member_since) ||
+                  toDate((selectedUser as any).memberSince)
+                const lastActive =
+                  toDate(selectedUser.last_login) ||
+                  toDate((selectedUser as any).lastLogin) ||
+                  toDate((selectedUser as any).last_active) ||
+                  toDate((selectedUser as any).lastActive)
+                const status = getStatus(selectedUser)
+
+                return (
+                  <>
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2 text-2xl">
                   <UserIcon className="w-6 h-6 text-primary" /> Profile Details
@@ -226,8 +287,8 @@ export default function UsersPage() {
                    </div>
                    <div>
                      <h3 className="text-xl font-bold">{selectedUser.name}</h3>
-                     <Badge variant={selectedUser.status === 'active' ? 'default' : 'secondary'} className="mt-1">
-                       {selectedUser.status?.toUpperCase() || 'INACTIVE'}
+                     <Badge variant={status === "active" ? "default" : "secondary"} className="mt-1">
+                       {status.toUpperCase()}
                      </Badge>
                      <p className="text-xs text-muted-foreground mt-1 italic">ID: {selectedUser.user_id}</p>
                    </div>
@@ -251,7 +312,7 @@ export default function UsersPage() {
                       <Calendar className="w-3 h-3" /> Member Since
                     </p>
                     <p className="text-sm font-medium">
-                      {selectedUser.created_at ? new Date(selectedUser.created_at as any).toLocaleDateString() : 'N/A'}
+                      {memberSince ? memberSince.toLocaleDateString() : "N/A"}
                     </p>
                   </div>
                   <div className="space-y-1">
@@ -259,7 +320,7 @@ export default function UsersPage() {
                       <Activity className="w-3 h-3" /> Last Active
                     </p>
                     <p className="text-sm font-medium">
-                       {selectedUser.last_login ? new Date(selectedUser.last_login as any).toLocaleString() : 'Recently'}
+                      {lastActive ? lastActive.toLocaleString() : "N/A"}
                     </p>
                   </div>
                 </div>
@@ -276,6 +337,9 @@ export default function UsersPage() {
                   </div>
                 </div>
               </div>
+                  </>
+                )
+              })()}
             </>
           )}
         </DialogContent>
