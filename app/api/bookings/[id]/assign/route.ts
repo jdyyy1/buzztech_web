@@ -14,8 +14,20 @@ export async function POST(
       return NextResponse.json({ error: "Missing staff info" }, { status: 400 })
     }
 
+    const bookingRef = adminDb.collection("bookings").doc(bookingId)
+    const bookingSnap = await bookingRef.get()
+
+    if (!bookingSnap.exists) {
+      return NextResponse.json({ error: "Booking not found" }, { status: 404 })
+    }
+
+    const bookingData = bookingSnap.data()
+    if (bookingData?.status === "CANCELLED") {
+      return NextResponse.json({ error: "Cancelled bookings cannot be assigned" }, { status: 409 })
+    }
+
     // Update booking with assigned staff
-    await adminDb.collection("bookings").document(bookingId).update({
+    await bookingRef.update({
       developerId: staffId,
       developerName: staffName,
       status: "ACTIVE" // Move to active when assigned

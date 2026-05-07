@@ -109,6 +109,10 @@ export default function BookingsManagementPage() {
 
   const handleAssignStaff = async () => {
     if (!selectedBooking || !selectedStaffId) return
+    if (selectedBooking.status === "CANCELLED") {
+      toast.error("Cannot assign a specialist to a cancelled booking")
+      return
+    }
     setIsAssigning(true)
     const staffMember = staff.find(s => s.user_id === selectedStaffId)
     try {
@@ -117,12 +121,15 @@ export default function BookingsManagementPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ staffId: selectedStaffId, staffName: staffMember?.name || "Unknown Staff" })
       })
-      if (!res.ok) throw new Error("Failed to assign staff")
+      if (!res.ok) {
+        const payload = await res.json().catch(() => null)
+        throw new Error(payload?.error || "Failed to assign staff")
+      }
       toast.success("Staff assigned successfully")
       setIsAssignDialogOpen(false)
       setSelectedStaffId("")
-    } catch (error) {
-      toast.error("Assignment failed")
+    } catch (error: any) {
+      toast.error(error?.message || "Assignment failed")
     } finally {
       setIsAssigning(false)
     }
@@ -290,16 +297,20 @@ export default function BookingsManagementPage() {
                       <div className="flex justify-between text-sm border-t pt-1 mt-1"><span>Balance:</span> <span className="font-bold text-destructive">₱{(selectedBooking.totalAmount - selectedBooking.paidAmount).toLocaleString()}</span></div>
                     </div>
                   </div>
-                  {!selectedBooking.developerId ? (
+                  {!selectedBooking.developerId && selectedBooking.status !== "CANCELLED" ? (
                     <Button className="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold h-10" onClick={() => { setIsAssignDialogOpen(true); setIsDetailsOpen(false); }}>
                        Assign Specialist
                     </Button>
                   ) : (
                     <div>
                       <Label className="text-xs text-muted-foreground uppercase font-bold">Assigned Staff</Label>
-                      <p className="font-bold flex items-center gap-2 text-green-700">
-                        <UserCheck className="w-4 h-4" /> {selectedBooking.developerName}
-                      </p>
+                      {selectedBooking.status === "CANCELLED" && !selectedBooking.developerId ? (
+                        <p className="font-bold text-destructive">Not allowed (booking cancelled)</p>
+                      ) : (
+                        <p className="font-bold flex items-center gap-2 text-green-700">
+                          <UserCheck className="w-4 h-4" /> {selectedBooking.developerName}
+                        </p>
+                      )}
                     </div>
                   )}
                 </div>
