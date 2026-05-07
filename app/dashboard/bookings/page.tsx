@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Search, ChevronRight, Filter, Briefcase, User, Clock, AlertCircle, UserCheck, CheckCircle2, Download, X, Calendar } from "lucide-react"
+import { Search, ChevronRight, Filter, Briefcase, User, Clock, AlertCircle, UserCheck, CheckCircle2, Download, X, Calendar, Paperclip } from "lucide-react"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -29,6 +29,182 @@ import { toast } from "sonner"
 
 const SERVICE_CATEGORIES = ["Graphic Design", "Web Development", "Mobile App", "Cybersecurity", "UI/UX Design", "Network Setup"]
 
+const getAssignedStaffId = (booking: any): string | null =>
+  booking.developerId || booking.developer_id || booking.staffId || booking.assignedStaffId || null
+
+const getAssignedStaffName = (booking: any): string | null =>
+  booking.developerName || booking.developer_name || booking.staffName || booking.assignedStaffName || null
+
+type BookingAttachment = {
+  label: string
+  raw: string
+  href?: string
+}
+
+const getBookingAttachments = (booking: any): BookingAttachment[] => {
+  if (!booking) return []
+
+  const attachments = new Map<string, BookingAttachment>()
+  const inlinePayloads: Array<{ data: string; mime?: string; label?: string }> = []
+  const preferredKeys = [
+    "attachmentUrls",
+    "attachments",
+    "fileattachments",
+    "fileAttachments",
+    "files",
+    "fileUrls",
+    "file_urls",
+    "pdfUrls",
+    "pdfUrl",
+    "documentUrls",
+    "documents",
+  ]
+
+  const toReadableLabel = (href: string, fallback?: string) => {
+    const fromHref = href.split("?")[0].split("#")[0].split("/").pop()
+    return (fromHref && fromHref.trim()) || (fallback && fallback.trim()) || "Attachment"
+  }
+
+  const isViewableHref = (value: string) => {
+    const v = value.trim()
+    if (v.startsWith("data:")) return true
+    const looksLikeFilePath = v.includes("/") && /\.[a-z0-9]{2,6}($|\?)/i.test(v)
+    const looksLikeFilename = !v.includes(" ") && /\.[a-z0-9]{2,6}$/i.test(v)
+    return (
+      v.startsWith("http://") ||
+      v.startsWith("https://") ||
+      v.startsWith("gs://") ||
+      v.startsWith("blob:") ||
+      looksLikeFilePath ||
+      looksLikeFilename
+    )
+  }
+
+  const isBase64Payload = (value: string) => {
+    const v = value.trim()
+    if (!v || v.length < 64 || v.includes(" ") || v.includes("://")) return false
+    return /^[A-Za-z0-9+/=]+$/.test(v)
+  }
+
+  const isMimeType = (value: string) => /^[a-z]+\/[a-z0-9.+-]+$/i.test(value.trim())
+
+  const isDirectlyOpenable = (href: string) =>
+    href.startsWith("http://") || href.startsWith("https://") || href.startsWith("blob:") || href.startsWith("data:")
+
+  const addAttachment = (rawValue: any, preferredLabel?: string) => {
+    if (rawValue == null) return
+
+    // Direct URL/path string.
+    if (typeof rawValue === "string") {
+      const value = rawValue.trim()
+      if (!value) return
+      if (isBase64Payload(value)) {
+        inlinePayloads.push({ data: value, label: preferredLabel })
+        return
+      }
+      if (isMimeType(value)) {
+        const last = inlinePayloads[inlinePayloads.length - 1]
+        if (last && !last.mime) last.mime = value
+        return
+      }
+      if (!isViewableHref(value)) return
+      const key = value
+      attachments.set(key, {
+        label: toReadableLabel(value, preferredLabel),
+        raw: value,
+        href: isDirectlyOpenable(value) ? value : undefined,
+      })
+      return
+    }
+
+    if (typeof rawValue !== "object") return
+
+    // Common attachment object shapes.
+    const possibleHref =
+      rawValue.url ||
+      rawValue.uri ||
+      rawValue.src ||
+      rawValue.link ||
+      rawValue.attachment ||
+      rawValue.attachmentUrl ||
+      rawValue.attachmentURL ||
+      rawValue.downloadURL ||
+      rawValue.downloadUrl ||
+      rawValue.download_url ||
+      rawValue.fileUrl ||
+      rawValue.fileURL ||
+      rawValue.file_url ||
+      rawValue.fileAttachment ||
+      rawValue.file_attachment ||
+      rawValue.fullPath ||
+      rawValue.path
+
+    const possibleLabel =
+      rawValue.name ||
+      rawValue.fileName ||
+      rawValue.filename ||
+      rawValue.originalName ||
+      rawValue.title
+
+    if (typeof possibleHref === "string" && possibleHref.trim() && isViewableHref(possibleHref)) {
+      const href = possibleHref.trim()
+      const key = href
+      attachments.set(key, {
+        label: String(toReadableLabel(href, possibleLabel)),
+        raw: href,
+        href: isDirectlyOpenable(href) ? href : undefined,
+      })
+    }
+  }
+
+  const walkAttachmentValue = (value: any, keyHint?: string) => {
+    if (value == null) return
+
+    if (Array.isArray(value)) {
+      value.forEach((item) => walkAttachmentValue(item, keyHint))
+      return
+    }
+
+    if (typeof value === "object") {
+      addAttachment(value, keyHint)
+      Object.values(value).forEach((child) => walkAttachmentValue(child, keyHint))
+      return
+    }
+
+    addAttachment(value, keyHint)
+  }
+
+  for (const key of preferredKeys) {
+    walkAttachmentValue(booking[key], key)
+  }
+
+  // Fallback scan for any attachment-like fields, including nested objects/arrays.
+  Object.entries(booking).forEach(([key, value]) => {
+    const normalized = key.toLowerCase()
+    const looksLikeAttachmentField =
+      normalized.includes("attach") ||
+      normalized.includes("file") ||
+      normalized.includes("pdf") ||
+      normalized.includes("document")
+
+    if (!looksLikeAttachmentField) return
+    walkAttachmentValue(value, key)
+  })
+
+  inlinePayloads.forEach((item, idx) => {
+    const mime = item.mime || "application/octet-stream"
+    const href = `data:${mime};base64,${item.data}`
+    const fallbackLabel = mime.startsWith("image/") ? `Image ${idx + 1}` : `Attachment ${idx + 1}`
+    attachments.set(href, {
+      label: toReadableLabel(item.label || "", fallbackLabel),
+      raw: href,
+      href,
+    })
+  })
+
+  return Array.from(attachments.values())
+}
+
 export default function BookingsManagementPage() {
   const [bookings, setBookings] = useState<Booking[]>([])
   const [staff, setStaff] = useState<UserType[]>([])
@@ -47,6 +223,11 @@ export default function BookingsManagementPage() {
   const [isAssignDialogOpen, setIsAssignDialogOpen] = useState(false)
   const [isAssigning, setIsAssigning] = useState(false)
   const [isDetailsOpen, setIsDetailsOpen] = useState(false)
+  const [resolvedAttachmentUrls, setResolvedAttachmentUrls] = useState<Record<string, string>>({})
+  const [isAttachmentPreviewOpen, setIsAttachmentPreviewOpen] = useState(false)
+  const [attachmentPreviewUrl, setAttachmentPreviewUrl] = useState("")
+  const [attachmentPreviewLabel, setAttachmentPreviewLabel] = useState("")
+  const [attachmentPreviewMime, setAttachmentPreviewMime] = useState("")
 
   useEffect(() => {
     const q = query(collection(db, "bookings"), orderBy("bookingDate", "desc"))
@@ -79,6 +260,216 @@ export default function BookingsManagementPage() {
 
     return () => unsubscribe()
   }, [])
+
+  useEffect(() => {
+    if (!selectedBooking || !isDetailsOpen) {
+      setResolvedAttachmentUrls({})
+      return
+    }
+
+    const attachments = getBookingAttachments(selectedBooking)
+    const unresolved = attachments.filter((file) => !file.href)
+    if (unresolved.length === 0) return
+
+    let cancelled = false
+
+    const resolveUrls = async () => {
+      const entries = await Promise.all(
+        unresolved.map(async (file) => {
+          try {
+            const res = await fetch(`/api/bookings/${selectedBooking.id}/attachment-url`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ attachment: file.raw }),
+            })
+            if (!res.ok) return [file.raw, ""]
+            const data = await res.json()
+            return [file.raw, typeof data?.url === "string" ? data.url : ""]
+          } catch {
+            return [file.raw, ""]
+          }
+        }),
+      )
+
+      if (cancelled) return
+      setResolvedAttachmentUrls((prev) => {
+        const next = { ...prev }
+        entries.forEach(([raw, url]) => {
+          if (url) next[String(raw)] = String(url)
+        })
+        return next
+      })
+    }
+
+    resolveUrls()
+    return () => {
+      cancelled = true
+    }
+  }, [selectedBooking, isDetailsOpen])
+
+  const openResolvedAttachment = async (file: BookingAttachment) => {
+    const showPreview = (url: string, mime: string, label: string) => {
+      setAttachmentPreviewUrl(url)
+      setAttachmentPreviewMime(mime)
+      setAttachmentPreviewLabel(label)
+      setIsAttachmentPreviewOpen(true)
+    }
+
+    const inferMime = (url: string, fallbackName?: string) => {
+      if (url.startsWith("data:")) {
+        const match = url.match(/^data:([^;]+);base64,/i)
+        if (match?.[1]) return match[1]
+      }
+
+      const lowerUrl = url.toLowerCase().split("?")[0]
+      const lowerName = String(fallbackName || "").toLowerCase()
+      const combined = `${lowerUrl} ${lowerName}`
+      if (combined.includes(".jpg") || combined.includes(".jpeg")) return "image/jpeg"
+      if (combined.includes(".png")) return "image/png"
+      if (combined.includes(".gif")) return "image/gif"
+      if (combined.includes(".webp")) return "image/webp"
+      if (combined.includes(".pdf")) return "application/pdf"
+      return "application/octet-stream"
+    }
+
+    const openUrl = (url: string) => {
+      const label = file.label || "Attachment"
+      const mime = inferMime(url, `${file.label} ${file.raw}`)
+
+      if (url.startsWith("data:")) {
+        try {
+          const [meta, payload] = url.split(",", 2)
+          const mimeMatch = meta.match(/^data:([^;]+);base64$/i)
+          const detectedFromPayload = (() => {
+            const head = (payload || "").slice(0, 16)
+            if (head.startsWith("/9j/")) return "image/jpeg"
+            if (head.startsWith("iVBOR")) return "image/png"
+            if (head.startsWith("R0lGOD")) return "image/gif"
+            if (head.startsWith("JVBER")) return "application/pdf"
+            return ""
+          })()
+          const metaMime = mimeMatch?.[1] || ""
+          const decodedMime =
+            !metaMime || metaMime === "application/octet-stream"
+              ? detectedFromPayload || mime
+              : metaMime
+          const binary = atob(payload || "")
+          const bytes = new Uint8Array(binary.length)
+          for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i)
+          const blobUrl = URL.createObjectURL(new Blob([bytes], { type: decodedMime }))
+          showPreview(blobUrl, decodedMime, label)
+          return true
+        } catch (e) {
+          console.error("Attachment open (data url) failed:", e)
+          toast.error("Failed to decode inline attachment")
+          return false
+        }
+      }
+
+      if (mime.startsWith("image/") || mime === "application/pdf") {
+        showPreview(url, mime, label)
+        return true
+      }
+
+      const opened = window.open(url, "_blank", "noopener,noreferrer")
+      if (!opened) {
+        toast.error("Popup blocked while opening attachment")
+        return false
+      }
+      return true
+    }
+
+    const findInlineDataUrl = (value: any): string | null => {
+      const isBase64 = (v: string) => /^[A-Za-z0-9+/=_-]+$/.test(v) && v.length >= 64
+      const isMime = (v: string) => /^[a-z]+\/[a-z0-9.+-]+$/i.test(v)
+
+      let mime: string | null = null
+      let base64: string | null = null
+      let dataUrl: string | null = null
+
+      const walk = (node: any, key = "") => {
+        if (base64 || dataUrl) return
+        if (node == null) return
+        if (typeof node === "string") {
+          const s = node.trim()
+          if (!s) return
+          if (s.startsWith("data:")) {
+            dataUrl = s
+            return
+          }
+          if (!mime && isMime(s)) {
+            mime = s
+            return
+          }
+          const lowerKey = key.toLowerCase()
+          const isDataLikeKey =
+            lowerKey.includes("base64") || lowerKey.includes("data") || lowerKey.includes("content")
+          if (isBase64(s) || isDataLikeKey) {
+            base64 = s
+          }
+          return
+        }
+        if (Array.isArray(node)) {
+          node.forEach((item, idx) => walk(item, `${key}[${idx}]`))
+          return
+        }
+        if (typeof node === "object") {
+          Object.entries(node).forEach(([k, v]) => walk(v, key ? `${key}.${k}` : k))
+        }
+      }
+
+      walk(value)
+      if (dataUrl) return dataUrl
+      if (!base64) return null
+      return `data:${mime || "application/octet-stream"};base64,${base64}`
+    }
+
+    const directUrl = file.href || resolvedAttachmentUrls[file.raw]
+    if (directUrl) {
+      openUrl(directUrl)
+      return
+    }
+    if (!selectedBooking) return
+
+    const looksLikeFilename = /\.[a-z0-9]{2,6}$/i.test(file.raw)
+    if (looksLikeFilename) {
+      const allAttachments = getBookingAttachments(selectedBooking)
+      const inlineMatch = allAttachments.find((item) => {
+        const href = item.href || resolvedAttachmentUrls[item.raw]
+        return typeof href === "string" && href.startsWith("data:")
+      })
+      if (inlineMatch?.href) {
+        openUrl(inlineMatch.href)
+        return
+      }
+      const inlineFromBooking = findInlineDataUrl(selectedBooking)
+      if (inlineFromBooking) {
+        openUrl(inlineFromBooking)
+        return
+      }
+    }
+
+    try {
+      const res = await fetch(`/api/bookings/${selectedBooking.id}/attachment-url`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ attachment: file.raw }),
+      })
+      if (!res.ok) {
+        toast.error("Unable to open attachment")
+        return
+      }
+      const data = await res.json()
+      if (typeof data?.url === "string" && data.url) {
+        setResolvedAttachmentUrls((prev) => ({ ...prev, [file.raw]: data.url }))
+        openUrl(data.url)
+        return
+      }
+      toast.error("Unable to open attachment")
+    } catch {
+      toast.error("Unable to open attachment")
+    }
+  }
 
   const handleExportCSV = () => {
     const headers = ["Booking ID", "Service", "Client Name", "Staff", "Status", "Total Amount", "Paid", "Date"]
@@ -115,17 +506,50 @@ export default function BookingsManagementPage() {
     }
     setIsAssigning(true)
     const staffMember = staff.find(s => s.user_id === selectedStaffId)
+    const staffName = staffMember?.name || "Unknown Staff"
     try {
       const res = await fetch(`/api/bookings/${selectedBooking.id}/assign`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ staffId: selectedStaffId, staffName: staffMember?.name || "Unknown Staff" })
+        body: JSON.stringify({ staffId: selectedStaffId, staffName })
       })
       if (!res.ok) {
         const payload = await res.json().catch(() => null)
         throw new Error(payload?.error || "Failed to assign staff")
       }
       toast.success("Staff assigned successfully")
+
+      // Optimistically update local state so "Handling By" reflects instantly.
+      setBookings(prev =>
+        prev.map(b => (b.id === selectedBooking.id ? { ...b, status: "ACTIVE" } : b)),
+      )
+
+      // Then re-fetch from Firestore to ensure the UI matches the canonical stored fields.
+      const updatedSnap = await getDoc(doc(db, "bookings", selectedBooking.id))
+      if (updatedSnap.exists()) {
+        const updatedData = updatedSnap.data() as any
+        const updated = { id: updatedSnap.id, ...updatedData } as Booking
+
+        setBookings(prev => prev.map(b => (b.id === updated.id ? updated : b)))
+        setSelectedBooking(updated)
+      } else {
+        // Fallback to optimistic display if the doc disappears.
+        setSelectedBooking(prev =>
+          prev && prev.id === selectedBooking.id
+            ? {
+                ...prev,
+                developerId: selectedStaffId,
+                developerName: staffName,
+                developer_id: selectedStaffId,
+                developer_name: staffName,
+                assignedStaffId: selectedStaffId,
+                assignedStaffName: staffName,
+                status: "ACTIVE",
+              }
+            : prev,
+        )
+      }
+
       setIsAssignDialogOpen(false)
       setSelectedStaffId("")
     } catch (error: any) {
@@ -142,8 +566,9 @@ export default function BookingsManagementPage() {
     
     const matchesStatus = statusFilter === "ALL" || b.status === statusFilter
     const matchesCategory = categoryFilter === "ALL" || b.serviceName.includes(categoryFilter)
-    const matchesAssignment = assignmentFilter === "ALL" || 
-                             (assignmentFilter === "ASSIGNED" ? !!b.developerId : !b.developerId)
+    const assignedStaffId = getAssignedStaffId(b)
+    const matchesAssignment = assignmentFilter === "ALL" ||
+                             (assignmentFilter === "ASSIGNED" ? !!assignedStaffId : !assignedStaffId)
 
     return matchesSearch && matchesStatus && matchesCategory && matchesAssignment
   })
@@ -218,6 +643,12 @@ export default function BookingsManagementPage() {
         {loading ? (
           <div className="text-center py-20 animate-pulse text-muted-foreground font-bold">SYNCING WITH FIRESTORE...</div>
         ) : filteredBookings.map((booking) => (
+          (() => {
+            const assignedStaffId = getAssignedStaffId(booking)
+            const assignedStaffName = getAssignedStaffName(booking)
+            const attachments = getBookingAttachments(booking)
+
+            return (
           <Card 
             key={booking.id} 
             className="p-4 hover:shadow-lg transition-all cursor-pointer border-l-4 border-l-transparent hover:border-l-primary group"
@@ -240,8 +671,8 @@ export default function BookingsManagementPage() {
 
                 <div className="space-y-1">
                   <p className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Handling By</p>
-                  <p className={`text-sm font-bold ${!booking.developerId ? 'text-orange-500 italic' : ''}`}>
-                    {booking.developerName || "Unassigned"}
+                  <p className={`text-sm font-bold ${!assignedStaffId ? 'text-orange-500 italic' : ''}`}>
+                    {assignedStaffName || (assignedStaffId ? `Assigned (${assignedStaffId.slice(0, 8)}...)` : "Unassigned")}
                   </p>
                 </div>
 
@@ -250,9 +681,15 @@ export default function BookingsManagementPage() {
                   <p className="text-sm font-black">₱{booking.paidAmount.toLocaleString()} / ₱{booking.totalAmount.toLocaleString()}</p>
                 </div>
               </div>
+              <div className="hidden md:flex items-center gap-1 text-xs text-muted-foreground mr-4">
+                <Paperclip className="w-3.5 h-3.5" />
+                <span>{attachments.length}</span>
+              </div>
               <ChevronRight className="w-5 h-5 text-muted-foreground group-hover:translate-x-1 transition-transform" />
             </div>
           </Card>
+            )
+          })()
         ))}
       </div>
 
@@ -261,6 +698,11 @@ export default function BookingsManagementPage() {
         <DialogContent className="sm:max-w-[600px]">
           {selectedBooking && (
             <>
+              {(() => {
+                const attachments = getBookingAttachments(selectedBooking)
+
+                return (
+                  <>
               <DialogHeader>
                 <DialogTitle className="text-2xl font-bold flex items-center gap-2">
                   <FileText className="w-6 h-6 text-primary" /> Booking Overview
@@ -297,18 +739,18 @@ export default function BookingsManagementPage() {
                       <div className="flex justify-between text-sm border-t pt-1 mt-1"><span>Balance:</span> <span className="font-bold text-destructive">₱{(selectedBooking.totalAmount - selectedBooking.paidAmount).toLocaleString()}</span></div>
                     </div>
                   </div>
-                  {!selectedBooking.developerId && selectedBooking.status !== "CANCELLED" ? (
+                  {!getAssignedStaffId(selectedBooking) && selectedBooking.status !== "CANCELLED" ? (
                     <Button className="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold h-10" onClick={() => { setIsAssignDialogOpen(true); setIsDetailsOpen(false); }}>
                        Assign Specialist
                     </Button>
                   ) : (
                     <div>
                       <Label className="text-xs text-muted-foreground uppercase font-bold">Assigned Staff</Label>
-                      {selectedBooking.status === "CANCELLED" && !selectedBooking.developerId ? (
+                      {selectedBooking.status === "CANCELLED" && !getAssignedStaffId(selectedBooking) ? (
                         <p className="font-bold text-destructive">Not allowed (booking cancelled)</p>
                       ) : (
                         <p className="font-bold flex items-center gap-2 text-green-700">
-                          <UserCheck className="w-4 h-4" /> {selectedBooking.developerName}
+                          <UserCheck className="w-4 h-4" /> {getAssignedStaffName(selectedBooking) || `Assigned (${String(getAssignedStaffId(selectedBooking) || "").slice(0, 8)}...)`}
                         </p>
                       )}
                     </div>
@@ -323,6 +765,28 @@ export default function BookingsManagementPage() {
                 </div>
               </div>
 
+              <div className="py-2">
+                <Label className="text-xs text-muted-foreground uppercase font-bold flex items-center gap-2">
+                  <Paperclip className="w-3.5 h-3.5" /> Attachments
+                </Label>
+                {attachments.length > 0 ? (
+                  <div className="mt-2 space-y-2">
+                    {attachments.map((file, idx) => (
+                      <button
+                        key={`${file.raw}-${idx}`}
+                        type="button"
+                        onClick={() => openResolvedAttachment(file)}
+                        className="block text-sm text-primary hover:underline break-all text-left"
+                      >
+                        {file.label || `Attachment ${idx + 1}`} - View Attachment
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-2 text-sm text-muted-foreground">No attachments uploaded.</p>
+                )}
+              </div>
+
               <DialogFooter>
                 {selectedBooking.status === "ACTIVE" && selectedBooking.is_client_approved && selectedBooking.paidAmount >= selectedBooking.totalAmount && (
                    <Button className="bg-green-600 hover:bg-green-700 text-white gap-2 px-8" onClick={() => handleCompleteBooking(selectedBooking)}>
@@ -331,6 +795,9 @@ export default function BookingsManagementPage() {
                 )}
                 <Button variant="outline" onClick={() => setIsDetailsOpen(false)}>Close Overview</Button>
               </DialogFooter>
+                  </>
+                )
+              })()}
             </>
           )}
         </DialogContent>
@@ -344,7 +811,15 @@ export default function BookingsManagementPage() {
             <Select onValueChange={setSelectedStaffId} value={selectedStaffId}>
               <SelectTrigger><SelectValue placeholder="Choose a specialist..." /></SelectTrigger>
               <SelectContent>
-                {staff.map((s) => <SelectItem key={s.user_id} value={s.user_id}>{s.name} ({s.email})</SelectItem>)}
+                {staff.map((s, idx) => {
+                  const value = (s as any).user_id || (s as any).id || (s as any).email || String(idx)
+                  const key = `${value}-${idx}`
+                  return (
+                    <SelectItem key={key} value={String(value)}>
+                      {s.name} ({s.email})
+                    </SelectItem>
+                  )
+                })}
               </SelectContent>
             </Select>
           </div>
@@ -352,6 +827,50 @@ export default function BookingsManagementPage() {
             <Button variant="outline" onClick={() => setIsAssignDialogOpen(false)}>Cancel</Button>
             <Button onClick={handleAssignStaff} disabled={!selectedStaffId || isAssigning}>{isAssigning ? "Assigning..." : "Assign to Project"}</Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={isAttachmentPreviewOpen}
+        onOpenChange={(open) => {
+          setIsAttachmentPreviewOpen(open)
+          if (!open) {
+            setAttachmentPreviewUrl("")
+            setAttachmentPreviewMime("")
+            setAttachmentPreviewLabel("")
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-[900px] h-[80vh] p-0 overflow-hidden">
+          <DialogHeader className="px-6 py-4 border-b">
+            <DialogTitle>{attachmentPreviewLabel || "Attachment Preview"}</DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 min-h-0 bg-black/95 flex items-center justify-center">
+            {attachmentPreviewUrl ? (
+              attachmentPreviewMime.startsWith("image/") ? (
+                <img
+                  src={attachmentPreviewUrl}
+                  alt={attachmentPreviewLabel || "Attachment"}
+                  className="max-w-full max-h-full object-contain"
+                />
+              ) : attachmentPreviewMime === "application/pdf" ? (
+                <iframe
+                  src={attachmentPreviewUrl}
+                  title={attachmentPreviewLabel || "Attachment Preview"}
+                  className="w-full h-full border-0"
+                />
+              ) : (
+                <a
+                  href={attachmentPreviewUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-primary underline text-sm"
+                >
+                  Open attachment in new tab
+                </a>
+              )
+            ) : null}
+          </div>
         </DialogContent>
       </Dialog>
     </div>

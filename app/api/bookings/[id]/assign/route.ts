@@ -30,6 +30,11 @@ export async function POST(
     await bookingRef.update({
       developerId: staffId,
       developerName: staffName,
+      // Keep legacy aliases in sync for older UI/query paths.
+      developer_id: staffId,
+      developer_name: staffName,
+      assignedStaffId: staffId,
+      assignedStaffName: staffName,
       status: "ACTIVE" // Move to active when assigned
     })
 

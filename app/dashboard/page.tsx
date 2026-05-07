@@ -1,10 +1,12 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Users, Briefcase, ArrowRight, Settings, X } from "lucide-react"
 import { Card } from "@/components/ui/card"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
+import { db } from "@/lib/firebase"
+import { collection, onSnapshot, query, where } from "firebase/firestore"
 
 const quickActions = [
   { title: "Manage Users", description: "View and edit user accounts", icon: Users, href: "/dashboard/users" },
@@ -16,6 +18,7 @@ export default function DashboardPage() {
   const router = useRouter()
   const { user } = useAuth()
   const [showWelcome, setShowWelcome] = useState(true)
+  const [pendingBookingsCount, setPendingBookingsCount] = useState(0)
 
   const getDisplayName = () => {
     if (!user) return ""
@@ -45,6 +48,24 @@ export default function DashboardPage() {
   }
 
   const actions = getQuickActions()
+  const quickActionsGridClass = actions.length >= 3 ? "lg:grid-cols-3" : "lg:grid-cols-2"
+
+  useEffect(() => {
+    // Staff dashboard only: show alert if there are pending unassigned bookings.
+    if (!user || user.role !== "staff" || !db) return
+
+    const q = query(
+      collection(db, "bookings"),
+      where("status", "==", "PENDING"),
+      where("developerId", "==", null),
+    )
+
+    const unsub = onSnapshot(q, (snapshot) => {
+      setPendingBookingsCount(snapshot.size)
+    })
+
+    return () => unsub()
+  }, [user])
 
   return (
     <div className="p-8 space-y-8">
@@ -81,7 +102,7 @@ export default function DashboardPage() {
       )}
 
       {/* Role-specific stats/notifications */}
-      {user?.role === "staff" && (
+      {user?.role === "staff" && pendingBookingsCount > 0 && (
         <div className="bg-primary/5 border border-primary/20 p-4 rounded-lg flex items-center justify-between">
           <div className="flex items-center gap-3 text-primary">
             <div className="bg-primary/20 p-2 rounded-full">
@@ -104,7 +125,7 @@ export default function DashboardPage() {
       {/* Quick Actions */}
       <div>
         <h2 className="text-xl font-bold mb-4">Quick Actions</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className={`grid grid-cols-1 md:grid-cols-2 ${quickActionsGridClass} gap-4`}>
           {actions.map((action) => {
             const Icon = action.icon
             return (

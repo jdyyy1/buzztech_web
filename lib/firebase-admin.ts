@@ -8,6 +8,10 @@ const projectId =
   process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID ||
   process.env.FIREBASE_PROJECT_ID ||
   process.env.GOOGLE_CLOUD_PROJECT
+const storageBucket =
+  process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET ||
+  process.env.FIREBASE_STORAGE_BUCKET ||
+  (projectId ? `${projectId}.appspot.com` : undefined)
 
 if (!admin.apps.length) {
   try {
@@ -18,12 +22,14 @@ if (!admin.apps.length) {
           clientEmail: process.env.FIREBASE_ADMIN_CLIENT_EMAIL,
           privateKey: process.env.FIREBASE_ADMIN_PRIVATE_KEY.replace(/\\n/g, "\n"),
         }),
+        storageBucket,
       })
     } else {
       // Fallback to ADC (gcloud/auth configured) if service account env is not provided
       admin.initializeApp({
         credential: admin.credential.applicationDefault(),
         projectId,
+        storageBucket,
       })
     }
   } catch (e) {
@@ -35,3 +41,4 @@ if (!admin.apps.length) {
 
 export const adminAuth = admin.auth()
 export const adminDb = admin.firestore()
+export const adminStorage = admin.storage()
