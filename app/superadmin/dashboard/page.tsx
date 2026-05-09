@@ -165,7 +165,7 @@ export default function SuperAdminDashboard() {
       return monthlyBreakdown
         .filter((item) => item.period.endsWith(`-${periodFilter}`))
         .map((item) => ({
-          period: item.period.split("-")[0],
+          period: `${monthlyOptions.find((month) => month.value === periodFilter)?.label || "Month"} ${item.period.split("-")[0]}`,
           value: item.value,
         }))
     }
@@ -183,8 +183,8 @@ export default function SuperAdminDashboard() {
 
     if (revenueFilter === "monthly") {
       if (periodFilter === "all") return [{ period: "Jan", value: 0 }]
-      const monthLabel = monthlyOptions.find((month) => month.value === periodFilter)?.label.slice(0, 3) || "Mon"
-      return [{ period: monthLabel, value: 0 }]
+      const monthLabel = monthlyOptions.find((month) => month.value === periodFilter)?.label || "January"
+      return [{ period: `${monthLabel} ${new Date().getFullYear()}`, value: 0 }]
     }
 
     return [{ period: periodFilter === "all" ? `${new Date().getFullYear()}-Q1` : periodFilter, value: 0 }]
@@ -402,7 +402,9 @@ export default function SuperAdminDashboard() {
                 </div>
               ))
             ) : (
-              <p className="text-center text-muted-foreground py-12">No active assignments</p>
+              <div className="flex h-full min-h-[220px] items-center justify-center">
+                <p className="text-center text-muted-foreground">No active assignments</p>
+              </div>
             )}
           </div>
         </Card>
