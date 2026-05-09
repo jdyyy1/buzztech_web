@@ -51,6 +51,11 @@ export default function DashboardPage() {
   const quickActionsGridClass = actions.length >= 3 ? "lg:grid-cols-3" : "lg:grid-cols-2"
 
   useEffect(() => {
+    if (user?.role === "superadmin") {
+      router.replace("/superadmin/dashboard")
+      return
+    }
+
     // Staff dashboard only: show alert if there are pending unassigned bookings.
     if (!user || user.role !== "staff" || !db) return
 

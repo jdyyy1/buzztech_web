@@ -3,7 +3,7 @@
 import type React from "react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
-import { LayoutGrid, Users, BarChart3, Settings, LogOut, ShieldAlert } from "lucide-react"
+import { LayoutGrid, Users, BarChart3, Settings, LogOut, Briefcase } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/lib/auth-context"
 
@@ -18,9 +18,10 @@ export default function SuperAdminLayout({
 
   const navItems = [
     { href: "/superadmin/dashboard", label: "Dashboard", icon: LayoutGrid },
-    { href: "/dashboard", label: "Staff Panel", icon: LayoutGrid },
-    { href: "/dashboard/users", label: "Users", icon: Users },
-    { href: "/dashboard/settings", label: "Settings", icon: Settings },
+    { href: "/superadmin/users", label: "Users", icon: Users },
+    { href: "/superadmin/bookings", label: "Bookings", icon: BarChart3 },
+    { href: "/superadmin/tasks", label: "My Tasks", icon: Briefcase },
+    { href: "/superadmin/settings", label: "Settings", icon: Settings },
   ]
 
   if (loading) {
@@ -59,7 +60,7 @@ export default function SuperAdminLayout({
         <div className="p-6 border-b border-sidebar-border">
           <h1 className="text-xl font-bold text-sidebar-foreground italic uppercase tracking-wider">Superadmin Panel</h1>
           <p className="text-sm text-sidebar-foreground/60 mt-1">BUZZ TECH Management</p>
-          <p className="text-xs text-sidebar-foreground/50 mt-3">{user.name}</p>
+          <p className="text-xs text-sidebar-foreground/50 mt-3">Superadmin</p>
         </div>
 
         <nav className="flex-1 overflow-y-auto p-4 space-y-2">

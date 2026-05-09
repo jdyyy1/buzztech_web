@@ -61,13 +61,15 @@ export default function DashboardLayout({
     }
   }
 
+  const roleLabel = user.role === "staff" ? "Staff" : "Admin"
+
   return (
     <div className="flex h-screen bg-background">
       <aside className="w-64 border-r border-border bg-sidebar text-sidebar-foreground flex flex-col">
         <div className="p-6 border-b border-sidebar-border">
           <h1 className="text-xl font-bold text-sidebar-foreground italic uppercase tracking-wider">Management Panel</h1>
           <p className="text-sm text-sidebar-foreground/60 mt-1">BUZZ TECH Internal</p>
-          <p className="text-xs text-sidebar-foreground/50 mt-3">{user.name}</p>
+          <p className="text-xs text-sidebar-foreground/50 mt-3">{roleLabel}</p>
         </div>
 
         <nav className="flex-1 overflow-y-auto p-4 space-y-2">
