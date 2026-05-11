@@ -49,6 +49,14 @@ export default function DashboardPage() {
   }
 
   const actions = getQuickActions()
+  const quickActionsGridClass =
+    actions.length >= 4
+      ? "lg:grid-cols-4"
+      : actions.length === 3
+        ? "lg:grid-cols-3"
+        : actions.length === 2
+          ? "lg:grid-cols-2"
+          : "lg:grid-cols-1"
 
   useEffect(() => {
     if (user?.role === "superadmin") {
@@ -130,7 +138,7 @@ export default function DashboardPage() {
       {/* Quick Actions */}
       <div>
         <h2 className="text-xl font-bold mb-4">Quick Actions</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className={`grid grid-cols-1 md:grid-cols-2 ${quickActionsGridClass} gap-4`}>
           {actions.map((action) => {
             const Icon = action.icon
             return (
