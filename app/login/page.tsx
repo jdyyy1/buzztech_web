@@ -95,66 +95,102 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-4">
-      <Card className="w-full max-w-md p-8 space-y-6">
-        <div className="text-center">
-          <h1 className="text-3xl font-bold text-foreground">Login</h1>
-          <p className="text-muted-foreground mt-2">BUZZ TECH Management</p>
+    <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-[#fcfbf9] via-[#f5f2eb] to-[#e8e2d5] relative overflow-hidden">
+      {/* Background decoration */}
+      <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none flex items-center justify-center">
+        <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] rounded-full bg-[#dccca3] opacity-20 blur-[120px]" />
+        <div className="absolute bottom-[-10%] right-[-10%] w-[60%] h-[60%] rounded-full bg-[#c2a381] opacity-15 blur-[140px]" />
+      </div>
+
+      <div className="relative w-full max-w-[420px] z-10 mt-10">
+        {/* Floating Icon Container */}
+        <div className="absolute -top-[70px] left-1/2 transform -translate-x-1/2 bg-white p-2 rounded-full shadow-[0_8px_32px_rgba(139,115,85,0.2)] border border-white/80 z-20 transition-transform duration-300 hover:scale-105 hover:-translate-y-1">
+          <div className="w-24 h-24 rounded-full overflow-hidden bg-white flex items-center justify-center">
+            <img 
+              src="/logo.png" 
+              alt="BUZZ TECH Logo" 
+              className="w-full h-full object-contain"
+            />
+          </div>
         </div>
 
-        {error && (
-          <div className="p-4 bg-destructive/10 border border-destructive rounded-md">
-            <p className="text-sm text-destructive">{error}</p>
+        {/* Main Card */}
+        <Card className="w-full pt-[4.5rem] pb-8 px-8 space-y-7 bg-white/70 backdrop-blur-xl border border-white/60 shadow-[0_20px_40px_rgba(139,115,85,0.08)] rounded-[2rem] relative">
+          
+          <div className="text-center space-y-2">
+            <h1 className="text-3xl font-bold tracking-tight text-[#4a3f35]">Login</h1>
+            <p className="text-[#8c7b68] font-medium text-sm tracking-wide">BUZZ TECH Management</p>
           </div>
-        )}
 
-        <form onSubmit={handleLogin} className="space-y-4">
-          <div>
-            <label className="text-sm font-medium text-foreground">Email</label>
-            <div className="relative mt-2">
-              <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-5 h-5" />
-              <Input
-                type="email"
-                placeholder="admin@gmail.com"
-                className="pl-10"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-              />
+          {error && (
+            <div className="p-3.5 bg-red-50/80 border border-red-200 rounded-xl flex items-start space-x-2 animate-in fade-in slide-in-from-top-2 duration-300">
+              <div className="text-sm font-medium text-red-600 leading-snug">{error}</div>
             </div>
-          </div>
+          )}
 
-          <div>
-            <label className="text-sm font-medium text-foreground">Password</label>
-            <div className="relative mt-2">
-              <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-5 h-5" />
-              <Input
-                type={showPassword ? "text" : "password"}
-                placeholder="••••••••"
-                className="pl-10 pr-10"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-foreground"
-              >
-                {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-              </button>
+          <form onSubmit={handleLogin} className="space-y-5">
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold uppercase tracking-wider text-[#8c7b68] pl-1">Email</label>
+              <div className="relative group">
+                <div className="absolute left-3.5 top-1/2 transform -translate-y-1/2 text-[#a89680] group-focus-within:text-[#8b7355] transition-colors duration-300">
+                  <Mail className="w-5 h-5" />
+                </div>
+                <Input
+                  type="email"
+                  placeholder="admin@gmail.com"
+                  className="pl-11 h-12 rounded-full bg-white/50 border-white/60 shadow-sm focus-visible:ring-2 focus-visible:ring-[#8b7355]/30 focus-visible:border-[#8b7355]/50 focus-visible:bg-white text-[#4a3f35] placeholder:text-[#a89680] transition-all duration-300 backdrop-blur-sm"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                />
+              </div>
             </div>
-          </div>
 
-          <Button type="submit" disabled={loading} className="w-full mt-6">
-            {loading ? "Logging in..." : "Login"}
-          </Button>
-        </form>
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold uppercase tracking-wider text-[#8c7b68] pl-1">Password</label>
+              <div className="relative group">
+                <div className="absolute left-3.5 top-1/2 transform -translate-y-1/2 text-[#a89680] group-focus-within:text-[#8b7355] transition-colors duration-300">
+                  <Lock className="w-5 h-5" />
+                </div>
+                <Input
+                  type={showPassword ? "text" : "password"}
+                  placeholder="••••••••"
+                  className="pl-11 pr-11 h-12 rounded-full bg-white/50 border-white/60 shadow-sm focus-visible:ring-2 focus-visible:ring-[#8b7355]/30 focus-visible:border-[#8b7355]/50 focus-visible:bg-white text-[#4a3f35] placeholder:text-[#a89680] transition-all duration-300 backdrop-blur-sm"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3.5 top-1/2 transform -translate-y-1/2 text-[#a89680] hover:text-[#8b7355] transition-colors p-1"
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
 
-        <p className="text-center text-sm text-muted-foreground">
-          {auth && db ? "Connected to Firebase Authentication system" : "Firebase not configured"}
-        </p>
-      </Card>
+            <Button 
+              type="submit" 
+              disabled={loading} 
+              className="w-full h-12 mt-4 rounded-full bg-gradient-to-r from-[#8b7355] to-[#705a41] hover:from-[#7a6448] hover:to-[#5f4b36] text-white shadow-[0_8px_20px_rgba(139,115,85,0.25)] hover:shadow-[0_10px_25px_rgba(139,115,85,0.35)] transition-all duration-300 font-medium text-[15px] border-none"
+            >
+              {loading ? (
+                <span className="flex items-center gap-2">
+                  <div className="w-4 h-4 border-2 border-white/30 border-t-white/30 border-t-white rounded-full animate-spin" />
+                  Authenticating...
+                </span>
+              ) : (
+                "LOGIN"
+              )}
+            </Button>
+          </form>
+
+          <p className="text-center text-[11px] font-medium tracking-wide text-[#a89680]/80">
+            {auth && db ? "Connected to Firebase Authentication system" : "Firebase not configured"}
+          </p>
+        </Card>
+      </div>
     </div>
   )
 }
