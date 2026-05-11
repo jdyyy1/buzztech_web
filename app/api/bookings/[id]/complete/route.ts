@@ -4,10 +4,11 @@ import { FieldValue } from "firebase-admin/firestore"
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const bookingId = params.id
+    const { id } = await context.params
+    const bookingId = id
 
     // Get the booking
     const bookingDoc = await adminDb.collection("bookings").document(bookingId).get()

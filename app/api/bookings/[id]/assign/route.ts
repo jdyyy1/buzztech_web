@@ -4,11 +4,16 @@ import { FieldValue } from "firebase-admin/firestore"
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
     const { staffId, staffName } = await request.json()
-    const bookingId = params.id
+    const { id } = await context.params
+    const bookingId = String(id || "").trim()
+
+    if (!bookingId) {
+      return NextResponse.json({ error: "Missing booking id in route params" }, { status: 400 })
+    }
 
     if (!staffId || !staffName) {
       return NextResponse.json({ error: "Missing staff info" }, { status: 400 })
@@ -38,20 +43,28 @@ export async function POST(
       status: "ACTIVE" // Move to active when assigned
     })
 
-    // Notify the staff member
-    const notification = {
-      userId: staffId,
-      message: `You have been assigned to a new booking: ${bookingId}`,
-      isRead: false,
-      timestamp: FieldValue.serverTimestamp(),
-      type: "ASSIGNMENT",
-      bookingId: bookingId
+    // Notify the staff member, but do not fail assignment if notification write errors.
+    try {
+      const notification = {
+        userId: staffId,
+        message: `You have been assigned to a new booking: ${bookingId}`,
+        isRead: false,
+        timestamp: FieldValue.serverTimestamp(),
+        type: "ASSIGNMENT",
+        bookingId: bookingId
+      }
+      await adminDb.collection("notifications").add(notification)
+    } catch (notifyErr) {
+      console.warn("Assignment notification write failed:", notifyErr)
     }
-    await adminDb.collection("notifications").add(notification)
 
     return NextResponse.json({ message: "Staff assigned successfully" })
   } catch (error) {
     console.error("Assignment Error:", error)
-    return NextResponse.json({ error: "Failed to assign staff" }, { status: 500 })
+    const message = error instanceof Error ? error.message : "Failed to assign staff"
+    return NextResponse.json(
+      { error: message, debug: String(error) },
+      { status: 500 },
+    )
   }
 }

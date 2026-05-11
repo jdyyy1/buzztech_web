@@ -8,10 +8,13 @@ export async function GET() {
       .where("status", "==", "active")
       .get()
     
-    const staff = staffSnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    }))
+    const staff = staffSnapshot.docs
+      .map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }))
+      // Safety filter: ensure ONLY role=staff accounts are returned.
+      .filter((u: any) => String(u?.role || "").toLowerCase() === "staff")
 
     return NextResponse.json(staff)
   } catch (error) {

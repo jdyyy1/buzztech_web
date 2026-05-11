@@ -222,6 +222,7 @@ export default function BookingsManagementPage() {
   const [selectedStaffId, setSelectedStaffId] = useState<string>("")
   const [isAssignDialogOpen, setIsAssignDialogOpen] = useState(false)
   const [isAssigning, setIsAssigning] = useState(false)
+  const [assignError, setAssignError] = useState<string | null>(null)
   const [isDetailsOpen, setIsDetailsOpen] = useState(false)
   const [resolvedAttachmentUrls, setResolvedAttachmentUrls] = useState<Record<string, string>>({})
   const [isAttachmentPreviewOpen, setIsAttachmentPreviewOpen] = useState(false)
@@ -256,7 +257,11 @@ export default function BookingsManagementPage() {
       setLoading(false)
     })
 
-    fetch("/api/users/staff").then(res => res.json()).then(data => setStaff(data))
+    fetch("/api/users/staff")
+      .then((res) => res.json())
+      .then((data) =>
+        setStaff((Array.isArray(data) ? data : []).filter((u: any) => String(u?.role || "").toLowerCase() === "staff")),
+      )
 
     return () => unsubscribe()
   }, [])
@@ -500,12 +505,17 @@ export default function BookingsManagementPage() {
 
   const handleAssignStaff = async () => {
     if (!selectedBooking || !selectedStaffId) return
+    setAssignError(null)
     if (selectedBooking.status === "CANCELLED") {
-      toast.error("Cannot assign a specialist to a cancelled booking")
+      const msg = "Cannot assign a specialist to a cancelled booking"
+      setAssignError(msg)
+      toast.error(msg)
       return
     }
     setIsAssigning(true)
-    const staffMember = staff.find(s => s.user_id === selectedStaffId)
+    const staffMember = staff.find(
+      (s: any) => String((s as any).id || (s as any).user_id || (s as any).email || "") === selectedStaffId,
+    )
     const staffName = staffMember?.name || "Unknown Staff"
     try {
       const res = await fetch(`/api/bookings/${selectedBooking.id}/assign`, {
@@ -514,8 +524,18 @@ export default function BookingsManagementPage() {
         body: JSON.stringify({ staffId: selectedStaffId, staffName })
       })
       if (!res.ok) {
-        const payload = await res.json().catch(() => null)
-        throw new Error(payload?.error || "Failed to assign staff")
+        const raw = await res.text().catch(() => "")
+        let payload: any = null
+        try {
+          payload = raw ? JSON.parse(raw) : null
+        } catch {
+          payload = null
+        }
+        const message =
+          payload?.error ||
+          payload?.message ||
+          (raw ? `HTTP ${res.status}: ${raw}` : `HTTP ${res.status}: Failed to assign staff`)
+        throw new Error(String(message))
       }
       toast.success("Staff assigned successfully")
 
@@ -553,7 +573,10 @@ export default function BookingsManagementPage() {
       setIsAssignDialogOpen(false)
       setSelectedStaffId("")
     } catch (error: any) {
-      toast.error(error?.message || "Assignment failed")
+      const msg = error?.message || "Assignment failed"
+      setAssignError(msg)
+      console.error("Assign specialist failed:", error)
+      toast.error(msg)
     } finally {
       setIsAssigning(false)
     }
@@ -739,22 +762,32 @@ export default function BookingsManagementPage() {
                       <div className="flex justify-between text-sm border-t pt-1 mt-1"><span>Balance:</span> <span className="font-bold text-destructive">₱{(selectedBooking.totalAmount - selectedBooking.paidAmount).toLocaleString()}</span></div>
                     </div>
                   </div>
-                  {!getAssignedStaffId(selectedBooking) && selectedBooking.status !== "CANCELLED" ? (
-                    <Button className="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold h-10" onClick={() => { setIsAssignDialogOpen(true); setIsDetailsOpen(false); }}>
-                       Assign Specialist
+                  <div>
+                    <Label className="text-xs text-muted-foreground uppercase font-bold">Assigned Staff</Label>
+                    {selectedBooking.status === "CANCELLED" && !getAssignedStaffId(selectedBooking) ? (
+                      <p className="font-bold text-destructive">Not allowed (booking cancelled)</p>
+                    ) : getAssignedStaffId(selectedBooking) ? (
+                      <p className="font-bold flex items-center gap-2 text-green-700">
+                        <UserCheck className="w-4 h-4" />{" "}
+                        {getAssignedStaffName(selectedBooking) || `Assigned (${String(getAssignedStaffId(selectedBooking) || "").slice(0, 8)}...)`}
+                      </p>
+                    ) : (
+                      <p className="font-bold text-orange-500 italic">Unassigned</p>
+                    )}
+                  </div>
+                  {selectedBooking.status !== "CANCELLED" ? (
+                    <Button
+                      className="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold h-10"
+                      onClick={() => {
+                        setSelectedStaffId(String(getAssignedStaffId(selectedBooking) || ""))
+                        setAssignError(null)
+                        setIsAssignDialogOpen(true)
+                        setIsDetailsOpen(false)
+                      }}
+                    >
+                      {getAssignedStaffId(selectedBooking) ? "Change Specialist" : "Assign Specialist"}
                     </Button>
-                  ) : (
-                    <div>
-                      <Label className="text-xs text-muted-foreground uppercase font-bold">Assigned Staff</Label>
-                      {selectedBooking.status === "CANCELLED" && !getAssignedStaffId(selectedBooking) ? (
-                        <p className="font-bold text-destructive">Not allowed (booking cancelled)</p>
-                      ) : (
-                        <p className="font-bold flex items-center gap-2 text-green-700">
-                          <UserCheck className="w-4 h-4" /> {getAssignedStaffName(selectedBooking) || `Assigned (${String(getAssignedStaffId(selectedBooking) || "").slice(0, 8)}...)`}
-                        </p>
-                      )}
-                    </div>
-                  )}
+                  ) : null}
                 </div>
               </div>
 
@@ -804,15 +837,26 @@ export default function BookingsManagementPage() {
       </Dialog>
 
       {/* Shared Assignment Dialog */}
-      <Dialog open={isAssignDialogOpen} onOpenChange={setIsAssignDialogOpen}>
+      <Dialog
+        open={isAssignDialogOpen}
+        onOpenChange={(open) => {
+          setIsAssignDialogOpen(open)
+          if (!open) setAssignError(null)
+        }}
+      >
         <DialogContent>
           <DialogHeader><DialogTitle>Assign Staff Member</DialogTitle></DialogHeader>
           <div className="py-4 space-y-4">
+            {assignError ? (
+              <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {assignError}
+              </div>
+            ) : null}
             <Select onValueChange={setSelectedStaffId} value={selectedStaffId}>
               <SelectTrigger><SelectValue placeholder="Choose a specialist..." /></SelectTrigger>
               <SelectContent>
                 {staff.map((s, idx) => {
-                  const value = (s as any).user_id || (s as any).id || (s as any).email || String(idx)
+                  const value = (s as any).id || (s as any).user_id || (s as any).email || String(idx)
                   const key = `${value}-${idx}`
                   return (
                     <SelectItem key={key} value={String(value)}>

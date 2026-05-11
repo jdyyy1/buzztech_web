@@ -10,7 +10,7 @@ import { collection, onSnapshot, query, where } from "firebase/firestore"
 
 const quickActions = [
   { title: "Manage Users", description: "View and edit user accounts", icon: Users, href: "/dashboard/users" },
-  { title: "Manage Services", description: "View and edit service listings", icon: Briefcase, href: "/dashboard/settings" },
+  { title: "Manage Services", description: "View and edit service listings", icon: Briefcase, href: "/dashboard/services" },
   { title: "System Settings", description: "Configure system parameters", icon: Settings, href: "/dashboard/settings" },
 ]
 
@@ -39,6 +39,7 @@ export default function DashboardPage() {
     if (user?.role === "admin" || user?.role === "superadmin") {
       return [
         { title: "Manage Users", description: "View and edit user accounts", icon: Users, href: "/dashboard/users" },
+        { title: "Manage Services", description: "View and edit service listings", icon: Briefcase, href: "/dashboard/services" },
         { title: "Manage Bookings", description: "Handle pending and active bookings", icon: Briefcase, href: "/dashboard/bookings" },
         { title: "System Settings", description: "Configure system parameters", icon: Settings, href: "/dashboard/settings" },
       ]
@@ -48,7 +49,6 @@ export default function DashboardPage() {
   }
 
   const actions = getQuickActions()
-  const quickActionsGridClass = actions.length >= 3 ? "lg:grid-cols-3" : "lg:grid-cols-2"
 
   useEffect(() => {
     if (user?.role === "superadmin") {
@@ -130,7 +130,7 @@ export default function DashboardPage() {
       {/* Quick Actions */}
       <div>
         <h2 className="text-xl font-bold mb-4">Quick Actions</h2>
-        <div className={`grid grid-cols-1 md:grid-cols-2 ${quickActionsGridClass} gap-4`}>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           {actions.map((action) => {
             const Icon = action.icon
             return (

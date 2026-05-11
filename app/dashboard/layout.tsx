@@ -3,7 +3,7 @@
 import type React from "react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
-import { LayoutGrid, Users, BarChart3, Settings, LogOut, ShieldAlert, Briefcase } from "lucide-react"
+import { LayoutGrid, Users, BarChart3, Settings, LogOut, ShieldAlert, Briefcase, Package } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/lib/auth-context"
 
@@ -20,6 +20,7 @@ export default function DashboardLayout({
     { href: "/dashboard", label: "Dashboard", icon: LayoutGrid },
     ...(user?.role === "admin" || user?.role === "superadmin"
       ? [
+          { href: "/dashboard/services", label: "Services", icon: Package },
           { href: "/dashboard/users", label: "Users", icon: Users },
           { href: "/dashboard/bookings", label: "Bookings", icon: BarChart3 },
         ]

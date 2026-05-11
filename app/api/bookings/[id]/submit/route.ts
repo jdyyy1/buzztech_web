@@ -4,11 +4,12 @@ import { FieldValue } from "firebase-admin/firestore"
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
     const { submissionUrls } = await request.json()
-    const bookingId = params.id
+    const { id } = await context.params
+    const bookingId = id
 
     if (!submissionUrls || !Array.isArray(submissionUrls)) {
       return NextResponse.json({ error: "Invalid submission data" }, { status: 400 })

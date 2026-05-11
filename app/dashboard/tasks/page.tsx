@@ -21,7 +21,7 @@ import { Booking } from "@/lib/models"
 import { toast } from "sonner"
 
 export default function StaffTasksPage() {
-  const { user } = useAuth()
+  const { user, firebaseUser } = useAuth()
   const [activeTab, setActiveTab] = useState<"available" | "my-tasks">("my-tasks")
   const [availableRequests, setAvailableRequests] = useState<Booking[]>([])
   const [myTasks, setMyTasks] = useState<Booking[]>([])
@@ -39,7 +39,7 @@ export default function StaffTasksPage() {
       return
     }
 
-    const staffId = user.user_id || user.id
+    const staffId = firebaseUser?.uid || user.user_id || (user as any).id
     if (!staffId) {
       setLoading(false)
       toast.error("Unable to load tasks. Missing user ID.")
@@ -72,7 +72,7 @@ export default function StaffTasksPage() {
       unsubAvailable()
       unsubTasks()
     }
-  }, [user])
+  }, [user, firebaseUser])
 
   const handleSubmitWork = async () => {
     if (!selectedTask || !submissionUrl) return
