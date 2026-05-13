@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from "next/server"
 import { adminDb } from "@/lib/firebase-admin"
 import { FieldValue } from "firebase-admin/firestore"
+import {
+  bookingAssignedDeveloperId,
+  getMaxWorkloadCap,
+  canDeveloperAcceptNewAssignment,
+} from "@/lib/developer-profile"
+import { hasDownpaymentPaid } from "@/lib/booking-payment-rules"
 
 export async function POST(
   request: NextRequest,
@@ -26,9 +32,32 @@ export async function POST(
       return NextResponse.json({ error: "Booking not found" }, { status: 404 })
     }
 
-    const bookingData = bookingSnap.data()
+    const bookingData = bookingSnap.data() || {}
     if (bookingData?.status === "CANCELLED") {
       return NextResponse.json({ error: "Cancelled bookings cannot be assigned" }, { status: 409 })
+    }
+
+    const alreadyThisDeveloper = bookingAssignedDeveloperId(bookingData) === staffId
+    if (!alreadyThisDeveloper) {
+      if (!hasDownpaymentPaid(bookingData as { paidAmount?: number; totalAmount?: number })) {
+        return NextResponse.json(
+          {
+            error:
+              "Downpayment not received: the client must pay at least 20% of the contract before a developer can be assigned.",
+          },
+          { status: 403 },
+        )
+      }
+      const maxCap = getMaxWorkloadCap()
+      const assignedSnap = await adminDb.collection("bookings").where("developerId", "==", staffId).get()
+      const bookingsForCap = assignedSnap.docs.map((d) => ({ id: d.id, ...d.data() }))
+      const bookingPayload = { id: bookingSnap.id, ...bookingData }
+      if (!canDeveloperAcceptNewAssignment(bookingsForCap, staffId, bookingPayload, maxCap)) {
+        return NextResponse.json(
+          { error: "This developer is at their maximum workload for active bookings" },
+          { status: 409 },
+        )
+      }
     }
 
     // Update booking with assigned staff

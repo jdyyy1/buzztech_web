@@ -20,48 +20,11 @@ import { collection, query, where, onSnapshot } from "firebase/firestore"
 import { User } from "@/lib/models"
 import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
+import { Checkbox } from "@/components/ui/checkbox"
+import { DEVELOPER_SPECIALTY_OPTIONS } from "@/lib/developer-profile"
+import { getUserActivityStatus, toDate } from "@/lib/user-activity-status"
 
-const toDate = (value: any): Date | null => {
-  if (!value) return null
-
-  if (value instanceof Date) return value
-  if (typeof value?.toDate === "function") return value.toDate()
-
-  if (typeof value === "number") {
-    const ms = value < 1_000_000_000_000 ? value * 1000 : value
-    const parsed = new Date(ms)
-    return Number.isNaN(parsed.getTime()) ? null : parsed
-  }
-
-  if (typeof value === "string") {
-    const parsed = new Date(value)
-    return Number.isNaN(parsed.getTime()) ? null : parsed
-  }
-
-  return null
-}
-
-const getStatus = (user: any): "active" | "inactive" | "suspended" => {
-  const rawStatus = String(user.status || user.accountStatus || "").toLowerCase()
-  if (rawStatus === "suspended") return "suspended"
-
-  const lastSeen =
-    toDate(user.last_login) ||
-    toDate(user.lastLogin) ||
-    toDate(user.last_active) ||
-    toDate(user.lastActive)
-
-  // If we have activity timestamps, treat status as activity-based.
-  if (lastSeen) {
-    const THIRTY_MINUTES_MS = 30 * 60 * 1000
-    return Date.now() - lastSeen.getTime() <= THIRTY_MINUTES_MS ? "active" : "inactive"
-  }
-
-  // If no activity data exists, fallback to persisted status.
-  if (rawStatus === "active" || rawStatus === "inactive") return rawStatus
-
-  return "inactive"
-}
+const getStatus = getUserActivityStatus
 
 export default function UsersPage() {
   const [searchTerm, setSearchTerm] = useState("")
@@ -71,7 +34,12 @@ export default function UsersPage() {
   const [selectedUser, setSelectedUser] = useState<User | null>(null)
   
   // Form State
-  const [formData, setFormData] = useState({ name: "", email: "", password: "" })
+  const [formData, setFormData] = useState({
+    name: "",
+    email: "",
+    password: "",
+    specialties: [] as string[],
+  })
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   useEffect(() => {
@@ -97,7 +65,12 @@ export default function UsersPage() {
       const res = await fetch("/api/users/staff/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData)
+        body: JSON.stringify({
+          name: formData.name,
+          email: formData.email,
+          password: formData.password,
+          specialties: formData.specialties,
+        }),
       })
 
       const data = await res.json()
@@ -105,7 +78,7 @@ export default function UsersPage() {
 
       toast.success("Staff member created successfully!")
       setIsCreateDialogOpen(false)
-      setFormData({ name: "", email: "", password: "" })
+      setFormData({ name: "", email: "", password: "", specialties: [] })
     } catch (error: any) {
       toast.error(error.message)
     } finally {
@@ -133,7 +106,7 @@ export default function UsersPage() {
               <UserPlus className="w-4 h-4" /> Add New Staff
             </Button>
           </DialogTrigger>
-          <DialogContent className="sm:max-w-[425px]">
+          <DialogContent className="sm:max-w-[480px]">
             <form onSubmit={handleCreateStaff}>
               <DialogHeader>
                 <DialogTitle>Create Staff Account</DialogTitle>
@@ -169,6 +142,27 @@ export default function UsersPage() {
                       value={formData.email}
                       onChange={(e) => setFormData({...formData, email: e.target.value})}
                     />
+                  </div>
+                </div>
+                <div className="grid gap-2">
+                  <Label>Specialties</Label>
+                  <div className="max-h-40 space-y-2 overflow-y-auto rounded-md border p-3">
+                    {DEVELOPER_SPECIALTY_OPTIONS.map((opt) => (
+                      <label key={opt} className="flex cursor-pointer items-center gap-2 text-sm">
+                        <Checkbox
+                          checked={formData.specialties.includes(opt)}
+                          onCheckedChange={() =>
+                            setFormData((prev) => ({
+                              ...prev,
+                              specialties: prev.specialties.includes(opt)
+                                ? prev.specialties.filter((x) => x !== opt)
+                                : [...prev.specialties, opt],
+                            }))
+                          }
+                        />
+                        {opt}
+                      </label>
+                    ))}
                   </div>
                 </div>
                 <div className="grid gap-2">

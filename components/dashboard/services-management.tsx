@@ -65,10 +65,37 @@ const normalizeDoc = (docId: string, data: Record<string, unknown>): ServiceRow 
     iconUrl: data.iconUrl != null ? String(data.iconUrl) : undefined,
     iconStoragePath: data.iconStoragePath != null ? String(data.iconStoragePath) : undefined,
     iconWebUrl: data.iconWebUrl != null ? String(data.iconWebUrl) : undefined,
+    iconSignedUrl: data.iconSignedUrl != null ? String(data.iconSignedUrl) : undefined,
     rating: data.rating != null ? num(data.rating) : undefined,
     totalRating: data.totalRating != null ? num(data.totalRating) : undefined,
     projectCount: data.projectCount != null ? num(data.projectCount) : undefined,
   }
+}
+
+const mobileIconSrcFor = (row: ServiceRow) => {
+  const raw = String(row.iconResName || "").trim()
+  if (!raw) return ""
+  const base = raw.split("/").pop() || raw
+  const filename = base.includes(".") ? base : `${base}.png`
+  return `/mobile-icons/${encodeURIComponent(filename)}`
+}
+
+/** Best URL to show in the admin table / preview (matches mobile + web upload fields). */
+const resolveServiceIconSrc = (row: ServiceRow): string | null => {
+  const pick = (v: unknown) => (typeof v === "string" ? v.trim() : "")
+  const web = pick(row.iconWebUrl)
+  const signed = pick((row as Record<string, unknown>).iconSignedUrl)
+  const url = pick(row.iconUrl)
+  const isHttp = (s: string) => /^https?:\/\//i.test(s) || s.startsWith("//")
+  const isUsable = (s: string) =>
+    Boolean(s && !/^gs:\/\//i.test(s) && (isHttp(s) || s.startsWith("/") || s.startsWith("data:")))
+
+  if (isUsable(web)) return web
+  if (isUsable(signed)) return signed
+  if (isUsable(url)) return url
+
+  const mobile = mobileIconSrcFor(row)
+  return mobile || null
 }
 
 type FormState = {
@@ -92,7 +119,8 @@ export function ServicesManagement() {
   const [rows, setRows] = useState<ServiceRow[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
-  const [brokenMobileIcons, setBrokenMobileIcons] = useState<Record<string, true>>({})
+  /** Per-row: show resolved chain first; on error try `/mobile-icons/` if different; then placeholder. */
+  const [iconStage, setIconStage] = useState<Record<string, "resolved" | "mobile" | "broken">>({})
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingDocId, setEditingDocId] = useState<string | null>(null)
   const [form, setForm] = useState<FormState>(emptyForm)
@@ -160,7 +188,7 @@ export function ServicesManagement() {
       description: row.description,
     })
     setIconFile(null)
-    setCurrentIconUrl(row.iconUrl ?? null)
+    setCurrentIconUrl(resolveServiceIconSrc(row))
     setSaveError(null)
     setSaveInfo(null)
     setDialogOpen(true)
@@ -328,13 +356,26 @@ export function ServicesManagement() {
   const formatMoney = (n: number) =>
     n.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })
 
-  const mobileIconSrcFor = (row: ServiceRow) => {
-    const raw = String(row.iconResName || "").trim()
-    if (!raw) return ""
-    // Web can’t “fetch” Android drawables directly; host the mobile icons under /public/mobile-icons/.
-    // If the name has an extension, keep it; otherwise default to .png.
-    const filename = raw.includes(".") ? raw : `${raw}.png`
-    return `/mobile-icons/${filename}`
+  const tableIconSrc = (row: ServiceRow) => {
+    const stage = iconStage[row._docId] ?? "resolved"
+    if (stage === "broken") return null
+    if (stage === "mobile") {
+      const m = mobileIconSrcFor(row)
+      return m || null
+    }
+    return resolveServiceIconSrc(row)
+  }
+
+  const onTableIconError = (row: ServiceRow) => {
+    setIconStage((prev) => {
+      const stage = prev[row._docId] ?? "resolved"
+      const mobile = mobileIconSrcFor(row)
+      const resolved = resolveServiceIconSrc(row)
+      if (stage === "resolved" && mobile && mobile !== resolved) {
+        return { ...prev, [row._docId]: "mobile" }
+      }
+      return { ...prev, [row._docId]: "broken" }
+    })
   }
 
   if (!db) {
@@ -395,22 +436,18 @@ export function ServicesManagement() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filtered.map((row) => (
+              {filtered.map((row) => {
+                const iconSrc = tableIconSrc(row)
+                return (
                 <TableRow key={row._docId}>
                   <TableCell>
                     <div className="flex items-start gap-3">
-                      {((row as any).iconWebUrl || row.iconUrl) ? (
+                      {iconSrc ? (
                         <img
-                          src={String((row as any).iconWebUrl || row.iconUrl)}
-                          alt={`${row.serviceName} icon`}
-                          className="h-10 w-10 rounded-md object-cover border border-border"
-                        />
-                      ) : row.iconResName && !brokenMobileIcons[row._docId] ? (
-                        <img
-                          src={mobileIconSrcFor(row)}
+                          src={iconSrc}
                           alt={`${row.serviceName} icon`}
                           className="h-10 w-10 rounded-md object-cover border border-border bg-muted"
-                          onError={() => setBrokenMobileIcons((prev) => ({ ...prev, [row._docId]: true }))}
+                          onError={() => onTableIconError(row)}
                         />
                       ) : (
                         <div className="h-10 w-10 rounded-md bg-muted border border-border flex items-center justify-center">
@@ -449,7 +486,8 @@ export function ServicesManagement() {
                     </div>
                   </TableCell>
                 </TableRow>
-              ))}
+                )
+              })}
             </TableBody>
           </Table>
         )}

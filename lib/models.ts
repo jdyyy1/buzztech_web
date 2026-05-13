@@ -9,6 +9,10 @@ export interface User {
   status: "active" | "inactive" | "suspended"
   created_at: Date
   last_login: Date
+  /** Service categories this developer is strong in (admin-managed). */
+  specialties?: string[]
+  /** Updated while the user has an open web/mobile session (for realtime presence). */
+  presenceAt?: unknown
 }
 
 export interface Booking {
@@ -28,6 +32,9 @@ export interface Booking {
   budget?: string
   submission_urls?: string[]
   is_client_approved?: boolean
+  /** Developer UIDs who expressed interest on an open (unassigned) request. */
+  interestedDeveloperIds?: string[]
+  interestedDeveloperMeta?: Record<string, { developerName?: string; expressedAt?: unknown }>
 }
 
 export interface Payment {

@@ -1,14 +1,18 @@
 import { NextRequest, NextResponse } from "next/server"
 import { adminAuth, adminDb } from "@/lib/firebase-admin"
 import { FieldValue } from "firebase-admin/firestore"
+import { FIXED_MAX_WORKLOAD, normalizeSpecialties } from "@/lib/developer-profile"
 
 export async function POST(request: NextRequest) {
   try {
-    const { name, email, password, role = "staff" } = await request.json()
+    const body = await request.json()
+    const { name, email, password, role = "staff", specialties: rawSpecialties } = body
 
     if (!email || !password || !name) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
     }
+
+    const specialties = normalizeSpecialties(rawSpecialties)
 
     // 1. Create User in Firebase Authentication
     let userRecord
@@ -33,6 +37,8 @@ export async function POST(request: NextRequest) {
       created_at: FieldValue.serverTimestamp(),
       last_login: FieldValue.serverTimestamp(),
       password_temp: password, // Keep for fallback login if needed
+      specialties,
+      maxWorkload: FIXED_MAX_WORKLOAD,
     }
 
     await adminDb.collection("users").doc(userRecord.uid).set(userData)

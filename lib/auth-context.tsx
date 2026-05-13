@@ -3,7 +3,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react"
 import { type User as FirebaseUser, onAuthStateChanged } from "firebase/auth"
 import { auth, db } from "./firebase"
-import { doc, getDoc } from "firebase/firestore"
+import { doc, getDoc, updateDoc, serverTimestamp } from "firebase/firestore"
 import type { User } from "./models"
 
 interface AuthContextType {
@@ -60,6 +60,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     return () => unsubscribe()
   }, [])
+
+  /** Realtime-ish presence: refresh `presenceAt` while this browser session is signed in and visible. */
+  useEffect(() => {
+    if (!db || !firebaseUser) return
+
+    const ref = doc(db, "users", firebaseUser.uid)
+    const intervalMs = 30_000
+
+    const pulse = () => {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return
+      updateDoc(ref, { presenceAt: serverTimestamp() }).catch(() => {
+        /* ignore: rules or missing doc */
+      })
+    }
+
+    pulse()
+    const id = window.setInterval(pulse, intervalMs)
+
+    const onVis = () => {
+      if (document.visibilityState === "visible") pulse()
+    }
+    document.addEventListener("visibilitychange", onVis)
+
+    return () => {
+      window.clearInterval(id)
+      document.removeEventListener("visibilitychange", onVis)
+    }
+  }, [firebaseUser])
 
   const logout = async () => {
     try {

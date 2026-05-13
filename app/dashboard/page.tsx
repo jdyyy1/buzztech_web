@@ -1,7 +1,19 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Users, Briefcase, ArrowRight, Settings, X } from "lucide-react"
+import {
+  Users,
+  Briefcase,
+  ArrowRight,
+  Settings,
+  X,
+  Inbox,
+  Package,
+  BarChart3,
+  Code2,
+  History,
+  ClipboardList,
+} from "lucide-react"
 import { Card } from "@/components/ui/card"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
@@ -9,8 +21,8 @@ import { db } from "@/lib/firebase"
 import { collection, onSnapshot, query, where } from "firebase/firestore"
 
 const quickActions = [
+  { title: "Manage Services", description: "View and edit service listings", icon: Package, href: "/dashboard/services" },
   { title: "Manage Users", description: "View and edit user accounts", icon: Users, href: "/dashboard/users" },
-  { title: "Manage Services", description: "View and edit service listings", icon: Briefcase, href: "/dashboard/services" },
   { title: "System Settings", description: "Configure system parameters", icon: Settings, href: "/dashboard/settings" },
 ]
 
@@ -31,24 +43,29 @@ export default function DashboardPage() {
   const getQuickActions = () => {
     if (user?.role === "staff") {
       return [
-        { title: "My Tasks", description: "View your active and pending tasks", icon: Briefcase, href: "/dashboard/tasks" },
-        { title: "System Alerts", description: "Check system updates and notices", icon: Settings, href: "/dashboard/settings" },
+        { title: "My tasks", description: "Work assigned to you", icon: ClipboardList, href: "/dashboard/tasks" },
+        { title: "Open requests", description: "Pick up new bookings", icon: Inbox, href: "/dashboard/tasks?tab=available" },
+        { title: "Settings", description: "Account and preferences", icon: Settings, href: "/dashboard/settings" },
       ]
     }
-    
+
     if (user?.role === "admin" || user?.role === "superadmin") {
       return [
+        { title: "Manage Services", description: "View and edit service listings", icon: Package, href: "/dashboard/services" },
         { title: "Manage Users", description: "View and edit user accounts", icon: Users, href: "/dashboard/users" },
-        { title: "Manage Services", description: "View and edit service listings", icon: Briefcase, href: "/dashboard/services" },
-        { title: "Manage Bookings", description: "Handle pending and active bookings", icon: Briefcase, href: "/dashboard/bookings" },
+        { title: "Manage Bookings", description: "Handle pending and active bookings", icon: BarChart3, href: "/dashboard/bookings" },
+        { title: "Developers", description: "Developer roster and presence", icon: Code2, href: "/dashboard/developers" },
+        { title: "Audit trail", description: "Payments and booking history", icon: History, href: "/dashboard/audit-trail" },
         { title: "System Settings", description: "Configure system parameters", icon: Settings, href: "/dashboard/settings" },
       ]
     }
-    
+
     return quickActions
   }
 
   const actions = getQuickActions()
+  const isStaffQuick = user?.role === "staff"
+  const isAdminQuickGrid = user?.role === "admin" || user?.role === "superadmin"
   const quickActionsGridClass =
     actions.length >= 4
       ? "lg:grid-cols-4"
@@ -57,6 +74,13 @@ export default function DashboardPage() {
         : actions.length === 2
           ? "lg:grid-cols-2"
           : "lg:grid-cols-1"
+
+  const quickActionsGrid =
+    isStaffQuick
+      ? "grid grid-cols-1 gap-4 sm:grid-cols-3"
+      : isAdminQuickGrid
+        ? "grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"
+        : `grid grid-cols-1 gap-4 md:grid-cols-2 ${quickActionsGridClass}`
 
   useEffect(() => {
     if (user?.role === "superadmin") {
@@ -138,26 +162,26 @@ export default function DashboardPage() {
       {/* Quick Actions */}
       <div>
         <h2 className="text-xl font-bold mb-4">Quick Actions</h2>
-        <div className={`grid grid-cols-1 md:grid-cols-2 ${quickActionsGridClass} gap-4`}>
+        <div className={quickActionsGrid}>
           {actions.map((action) => {
             const Icon = action.icon
             return (
-              <Card 
-                key={action.title} 
+              <Card
+                key={action.title}
                 className="p-4 hover:shadow-md transition-shadow cursor-pointer border-2 hover:border-primary/50"
                 onClick={() => router.push(action.href)}
               >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-4">
-                    <div className="p-2 rounded-lg bg-primary/10">
-                      <Icon className="w-6 h-6 text-primary" />
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex min-w-0 items-center gap-4">
+                    <div className="shrink-0 rounded-lg bg-primary/10 p-2">
+                      <Icon className="h-6 w-6 text-primary" />
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <p className="font-semibold">{action.title}</p>
                       <p className="text-xs text-muted-foreground">{action.description}</p>
                     </div>
                   </div>
-                  <ArrowRight className="w-5 h-5 text-muted-foreground" />
+                  <ArrowRight className="h-5 w-5 shrink-0 text-muted-foreground" />
                 </div>
               </Card>
             )

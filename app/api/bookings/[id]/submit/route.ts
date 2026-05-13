@@ -16,14 +16,14 @@ export async function POST(
     }
 
     // Get the booking to find the userId (client)
-    const bookingDoc = await adminDb.collection("bookings").document(bookingId).get()
+    const bookingDoc = await adminDb.collection("bookings").doc(String(bookingId)).get()
     if (!bookingDoc.exists) {
       return NextResponse.json({ error: "Booking not found" }, { status: 404 })
     }
     const bookingData = bookingDoc.data()
 
     // Update booking with submissions
-    await adminDb.collection("bookings").document(bookingId).update({
+    await adminDb.collection("bookings").doc(String(bookingId)).update({
       submission_urls: submissionUrls,
       // Keep it ACTIVE until approved and paid
     })

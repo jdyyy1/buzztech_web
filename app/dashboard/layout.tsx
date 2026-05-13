@@ -3,7 +3,7 @@
 import type React from "react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
-import { LayoutGrid, Users, BarChart3, Settings, LogOut, ShieldAlert, Briefcase, Package } from "lucide-react"
+import { LayoutGrid, Users, BarChart3, Settings, LogOut, ShieldAlert, Briefcase, Package, Code2, History } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/lib/auth-context"
 
@@ -23,6 +23,8 @@ export default function DashboardLayout({
           { href: "/dashboard/services", label: "Services", icon: Package },
           { href: "/dashboard/users", label: "Users", icon: Users },
           { href: "/dashboard/bookings", label: "Bookings", icon: BarChart3 },
+          { href: "/dashboard/developers", label: "Developers", icon: Code2 },
+          { href: "/dashboard/audit-trail", label: "Audit trail", icon: History },
         ]
       : []),
     ...(user?.role === "staff" || user?.role === "superadmin"
@@ -66,7 +68,7 @@ export default function DashboardLayout({
 
   return (
     <div className="flex h-screen bg-background">
-      <aside className="w-64 border-r border-border bg-sidebar text-sidebar-foreground flex flex-col">
+      <aside className="flex w-64 flex-col border-r border-border bg-sidebar text-sidebar-foreground print:hidden">
         <div className="p-6 border-b border-sidebar-border">
           <h1 className="text-xl font-bold text-sidebar-foreground italic uppercase tracking-wider">Management Panel</h1>
           <p className="text-sm text-sidebar-foreground/60 mt-1">BUZZ TECH Internal</p>

@@ -11,7 +11,7 @@ export async function POST(
     const bookingId = id
 
     // Get the booking
-    const bookingDoc = await adminDb.collection("bookings").document(bookingId).get()
+    const bookingDoc = await adminDb.collection("bookings").doc(String(bookingId)).get()
     if (!bookingDoc.exists) {
       return NextResponse.json({ error: "Booking not found" }, { status: 404 })
     }
@@ -33,7 +33,7 @@ export async function POST(
     }
 
     // Mark as COMPLETED
-    await adminDb.collection("bookings").document(bookingId).update({
+    await adminDb.collection("bookings").doc(String(bookingId)).update({
       status: "COMPLETED",
       completionDate: FieldValue.serverTimestamp()
     })
