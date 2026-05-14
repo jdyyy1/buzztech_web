@@ -46,6 +46,13 @@ export function bookingAssignedDeveloperId(booking: Record<string, unknown> | nu
   return id ? String(id) : null
 }
 
+/** When true, the developer has submitted work; they are off active workload until submission is withdrawn. */
+export function developerSubmittedWorkReleased(booking: Record<string, unknown> | null | undefined): boolean {
+  if (!booking) return false
+  const v = booking.developerSubmittedWork ?? (booking as { developer_submitted_work?: unknown }).developer_submitted_work
+  return v === true || v === "true"
+}
+
 export function activeAssignmentCount(
   bookings: Array<{ id?: string; status?: string; [key: string]: unknown }>,
   developerId: string,
@@ -53,6 +60,7 @@ export function activeAssignmentCount(
   const id = String(developerId)
   return bookings.filter((b) => {
     if (b.status !== "PENDING" && b.status !== "ACTIVE") return false
+    if (developerSubmittedWorkReleased(b)) return false
     return bookingAssignedDeveloperId(b) === id
   }).length
 }

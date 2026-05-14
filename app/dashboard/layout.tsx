@@ -28,7 +28,7 @@ export default function DashboardLayout({
         ]
       : []),
     ...(user?.role === "staff" || user?.role === "superadmin"
-      ? [{ href: "/dashboard/tasks", label: "My Tasks", icon: Briefcase }]
+      ? [{ href: "/dashboard/tasks", label: "My projects", icon: Briefcase }]
       : []),
     ...(user?.role === "superadmin" ? [{ href: "/superadmin/dashboard", label: "Superadmin", icon: ShieldAlert }] : []),
     { href: "/dashboard/settings", label: "Settings", icon: Settings },
@@ -64,7 +64,7 @@ export default function DashboardLayout({
     }
   }
 
-  const roleLabel = user.role === "staff" ? "Staff" : "Admin"
+  const roleLabel = user.role === "staff" ? "Developer" : "Admin"
 
   return (
     <div className="flex h-screen bg-background">

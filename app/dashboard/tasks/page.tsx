@@ -2,7 +2,7 @@
 
 import { Suspense, useState, useEffect, useMemo, useCallback } from "react"
 import { useSearchParams } from "next/navigation"
-import { Clock, Send, FileText, ExternalLink, Eye } from "lucide-react"
+import { Clock, Send, FileText, ExternalLink, Eye, Undo2 } from "lucide-react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -20,8 +20,9 @@ import {
 import { useAuth } from "@/lib/auth-context"
 import { db } from "@/lib/firebase"
 import { collection, query, where, onSnapshot } from "firebase/firestore"
+import { Slider } from "@/components/ui/slider"
 import { Booking } from "@/lib/models"
-import { activeAssignmentCount, getMaxWorkloadCap, bookingAssignedDeveloperId } from "@/lib/developer-profile"
+import { activeAssignmentCount, getMaxWorkloadCap, bookingAssignedDeveloperId, developerSubmittedWorkReleased } from "@/lib/developer-profile"
 import { toast } from "sonner"
 
 function StaffTasksPageInner() {
@@ -36,6 +37,9 @@ function StaffTasksPageInner() {
   const [submissionUrl, setSubmissionUrl] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isSubmitDialogOpen, setIsSubmitDialogOpen] = useState(false)
+  const [progressDraft, setProgressDraft] = useState<Record<string, number>>({})
+  const [savingProgressId, setSavingProgressId] = useState<string | null>(null)
+  const [withdrawingId, setWithdrawingId] = useState<string | null>(null)
   const [requestDetailBooking, setRequestDetailBooking] = useState<Booking | null>(null)
   const [expressingBookingId, setExpressingBookingId] = useState<string | null>(null)
 
@@ -93,6 +97,16 @@ function StaffTasksPageInner() {
   )
   const workloadAtMax = staffId.length > 0 && currentWorkload >= workloadCap
 
+  const submitDialogBooking = useMemo(() => {
+    if (!selectedTask) return null
+    return myTasks.find((t) => t.id === selectedTask.id) ?? selectedTask
+  }, [selectedTask, myTasks])
+
+  const canConfirmSubmit =
+    !!submitDialogBooking &&
+    submitDialogBooking.status === "ACTIVE" &&
+    Math.min(100, Math.max(0, Math.round(Number(submitDialogBooking.developerProgressPercent ?? 0)))) >= 100
+
   const handleExpressInterest = useCallback(
     async (booking: Booking) => {
       if (!firebaseUser) {
@@ -129,25 +143,97 @@ function StaffTasksPageInner() {
     [firebaseUser, workloadAtMax, workloadCap],
   )
 
+  const getProgressValue = useCallback((task: Booking) => {
+    const d = progressDraft[task.id]
+    if (d !== undefined) return d
+    return Math.min(100, Math.max(0, Math.round(Number(task.developerProgressPercent ?? 0))))
+  }, [progressDraft])
+
+  const handleSaveProgress = useCallback(
+    async (task: Booking) => {
+      if (!firebaseUser) {
+        toast.error("You must be signed in.")
+        return
+      }
+      if (developerSubmittedWorkReleased(task as unknown as Record<string, unknown>)) {
+        toast.error("Cancel your submission first to change progress.")
+        return
+      }
+      const progress = getProgressValue(task)
+      setSavingProgressId(task.id)
+      try {
+        const token = await firebaseUser.getIdToken()
+        const res = await fetch(`/api/bookings/${task.id}/developer-progress`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ progress }),
+        })
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) throw new Error((data as { error?: string }).error || "Could not save progress")
+        toast.success("Progress saved")
+        setProgressDraft((prev) => {
+          const next = { ...prev }
+          delete next[task.id]
+          return next
+        })
+      } catch (e: unknown) {
+        toast.error(e instanceof Error ? e.message : "Could not save progress")
+      } finally {
+        setSavingProgressId(null)
+      }
+    },
+    [firebaseUser, getProgressValue],
+  )
+
+  const handleWithdrawSubmission = useCallback(
+    async (task: Booking) => {
+      if (!firebaseUser) {
+        toast.error("You must be signed in.")
+        return
+      }
+      if (!window.confirm("Cancel this submission? Deliverable links will be cleared and the booking will count toward your workload again.")) {
+        return
+      }
+      setWithdrawingId(task.id)
+      try {
+        const token = await firebaseUser.getIdToken()
+        const res = await fetch(`/api/bookings/${task.id}/withdraw-submission`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) throw new Error((data as { error?: string }).error || "Could not cancel submission")
+        toast.success("Submission cancelled")
+      } catch (e: unknown) {
+        toast.error(e instanceof Error ? e.message : "Could not cancel submission")
+      } finally {
+        setWithdrawingId(null)
+      }
+    },
+    [firebaseUser],
+  )
+
   const handleSubmitWork = async () => {
-    if (!selectedTask || !submissionUrl) return
+    if (!selectedTask || !submissionUrl || !firebaseUser || !canConfirmSubmit) return
     setIsSubmitting(true)
 
     try {
+      const token = await firebaseUser.getIdToken()
       const res = await fetch(`/api/bookings/${selectedTask.id}/submit`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ submissionUrls: [submissionUrl] }),
       })
 
-      if (!res.ok) throw new Error("Submission failed")
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error((data as { error?: string }).error || "Submission failed")
 
-      toast.success("Work submitted successfully!")
+      toast.success("Work submitted. Booking marked completed and removed from your active workload.")
       setIsSubmitDialogOpen(false)
       setSubmissionUrl("")
       setSelectedTask(null)
-    } catch (error) {
-      toast.error("Failed to submit work")
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : "Failed to submit work")
     } finally {
       setIsSubmitting(false)
     }
@@ -168,7 +254,11 @@ function StaffTasksPageInner() {
             activeTab === "my-tasks" ? "text-primary" : "text-muted-foreground hover:text-foreground"
           }`}
         >
-          My Active Tasks ({myTasks.filter((t) => t.status === "ACTIVE").length})
+          My Active Tasks (
+          {myTasks.filter(
+            (t) => t.status === "ACTIVE" && !developerSubmittedWorkReleased(t as unknown as Record<string, unknown>),
+          ).length}
+          )
           {activeTab === "my-tasks" && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary" />}
         </button>
         <button
@@ -250,10 +340,21 @@ function StaffTasksPageInner() {
             </div>
           )
         ) : myTasks.length > 0 ? (
-          myTasks.map((task) => (
+          myTasks.map((task) => {
+            const submitted = developerSubmittedWorkReleased(task as unknown as Record<string, unknown>)
+            const progressVal = getProgressValue(task)
+            const savedProgress = Math.min(100, Math.max(0, Math.round(Number(task.developerProgressPercent ?? 0))))
+            const canSubmitWork = task.status === "ACTIVE" && !submitted && savedProgress >= 100
+            const dirty =
+              progressDraft[task.id] !== undefined &&
+              progressDraft[task.id] !== Math.min(100, Math.max(0, Math.round(Number(task.developerProgressPercent ?? 0))))
+
+            return (
             <Card
               key={task.id}
-              className={`border-l-4 p-6 ${task.status === "COMPLETED" ? "border-l-green-500 opacity-80" : "border-l-primary"}`}
+              className={`border-l-4 p-6 ${
+                task.status === "COMPLETED" ? "border-l-green-500 opacity-80" : "border-l-primary"
+              }`}
             >
               <div className="space-y-4">
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -261,6 +362,9 @@ function StaffTasksPageInner() {
                     <div className="flex flex-wrap items-center gap-2">
                       <h3 className="text-lg font-bold">{task.serviceName}</h3>
                       <Badge variant={task.status === "COMPLETED" ? "default" : "secondary"}>{task.status}</Badge>
+                      {submitted && task.status === "COMPLETED" && !task.is_client_approved ? (
+                        <Badge className="bg-emerald-100 text-emerald-900 hover:bg-emerald-100">AWAITING CLIENT REVIEW</Badge>
+                      ) : null}
                       {task.is_client_approved && (
                         <Badge className="bg-green-100 text-green-700 hover:bg-green-100">CLIENT APPROVED</Badge>
                       )}
@@ -272,18 +376,45 @@ function StaffTasksPageInner() {
                     <Button type="button" variant="outline" size="sm" className="gap-2" onClick={() => setRequestDetailBooking(task)}>
                       <Eye className="h-4 w-4" /> View details
                     </Button>
-                    {task.status === "ACTIVE" && (
+                    {task.status === "ACTIVE" && !submitted && (
                       <Button
+                        type="button"
                         size="sm"
                         className="gap-2"
+                        disabled={!canSubmitWork}
+                        title={
+                          !canSubmitWork
+                            ? "Save progress at 100% before you can submit work"
+                            : undefined
+                        }
                         onClick={() => {
                           setSelectedTask(task)
                           setIsSubmitDialogOpen(true)
                         }}
                       >
-                        <Send className="h-4 w-4" /> Submit Work
+                        <Send className="h-4 w-4" /> Submit work
                       </Button>
                     )}
+                    {(task.status === "COMPLETED" || task.status === "ACTIVE") &&
+                    submitted &&
+                    !task.is_client_approved ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="gap-2 border-destructive/50 text-destructive hover:bg-destructive/10"
+                        disabled={withdrawingId === task.id || workloadAtMax}
+                        title={
+                          workloadAtMax
+                            ? `At maximum workload (${workloadCap} active or pending). You cannot cancel this submission — it would reopen the booking and exceed your limit.`
+                            : undefined
+                        }
+                        onClick={() => void handleWithdrawSubmission(task)}
+                      >
+                        <Undo2 className="h-4 w-4" />
+                        {withdrawingId === task.id ? "Cancelling…" : "Cancel submission"}
+                      </Button>
+                    ) : null}
                     {task.submission_urls && task.submission_urls.length > 0 && (
                       <>
                         {task.submission_urls.map((url, i) => (
@@ -298,6 +429,44 @@ function StaffTasksPageInner() {
                     )}
                   </div>
                 </div>
+
+                {task.status === "ACTIVE" ? (
+                  <div className="rounded-lg border border-border bg-muted/20 p-4 space-y-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <Label className="text-xs font-bold uppercase text-muted-foreground">Project progress</Label>
+                      <span className="text-sm font-bold tabular-nums">{progressVal}%</span>
+                    </div>
+                    <Slider
+                      value={[progressVal]}
+                      max={100}
+                      step={1}
+                      disabled={savingProgressId === task.id}
+                      onValueChange={([v]) =>
+                        setProgressDraft((prev) => ({
+                          ...prev,
+                          [task.id]: Math.min(100, Math.max(0, Math.round(v))),
+                        }))
+                      }
+                    />
+                    <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        disabled={!dirty || savingProgressId === task.id}
+                        onClick={() => void handleSaveProgress(task)}
+                      >
+                        {savingProgressId === task.id ? "Saving…" : "Save progress"}
+                      </Button>
+                      {savedProgress < 100 ? (
+                        <p className="text-xs text-muted-foreground">Submit work unlocks at 100% (saved).</p>
+                      ) : (
+                        <p className="text-xs text-green-700 font-medium">Ready to submit deliverables.</p>
+                      )}
+                    </div>
+                  </div>
+                ) : null}
+
                 {task.is_client_approved && task.paidAmount < task.totalAmount && (
                   <div className="flex items-center gap-1 rounded bg-orange-50 p-2 text-xs font-bold text-orange-600">
                     <Clock className="h-3 w-3" /> Waiting for final payment (₱{task.totalAmount - task.paidAmount}{" "}
@@ -306,7 +475,8 @@ function StaffTasksPageInner() {
                 )}
               </div>
             </Card>
-          ))
+            )
+          })
         ) : (
           <div className="rounded-xl border-2 border-dashed py-12 text-center text-muted-foreground">
             You don&apos;t have any tasks assigned.
@@ -319,11 +489,17 @@ function StaffTasksPageInner() {
           <DialogHeader>
             <DialogTitle>Submit Project Work</DialogTitle>
             <DialogDescription>
-              Provide the link to your prototype, draft, or completed files. The client will be notified to review and
-              approve.
+              You can submit only after <span className="font-semibold text-foreground">saved</span> project progress is
+              100%. Submitting marks the booking <span className="font-semibold text-foreground">completed</span> and
+              sends the client your deliverable link for review.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
+            {!canConfirmSubmit ? (
+              <div className="rounded-md border border-amber-500/40 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+                Close this dialog, set progress to 100%, click <strong>Save progress</strong>, then try again.
+              </div>
+            ) : null}
             <div className="space-y-2">
               <p className="text-sm font-bold">Submission Link (Google Drive, Figma, GitHub, etc.)</p>
               <Input placeholder="https://..." value={submissionUrl} onChange={(e) => setSubmissionUrl(e.target.value)} />
@@ -333,7 +509,10 @@ function StaffTasksPageInner() {
             <Button variant="outline" onClick={() => setIsSubmitDialogOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={handleSubmitWork} disabled={!submissionUrl || isSubmitting}>
+            <Button
+              onClick={() => void handleSubmitWork()}
+              disabled={!submissionUrl || isSubmitting || !canConfirmSubmit}
+            >
               {isSubmitting ? "Submitting..." : "Send to Client"}
             </Button>
           </DialogFooter>

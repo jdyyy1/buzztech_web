@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { adminDb } from "@/lib/firebase-admin"
+import { developerSubmittedWorkReleased } from "@/lib/developer-profile"
 
 export async function GET() {
   try {
@@ -85,7 +86,7 @@ export async function GET() {
       const service = data.serviceName || "Unknown"
       servicePopularity[service] = (servicePopularity[service] || 0) + 1
 
-      if (data.developerId && data.status === "ACTIVE") {
+      if (data.developerId && data.status === "ACTIVE" && !developerSubmittedWorkReleased(data)) {
         staffWorkload[data.developerName || "Unknown"] = (staffWorkload[data.developerName || "Unknown"] || 0) + 1
       }
     })

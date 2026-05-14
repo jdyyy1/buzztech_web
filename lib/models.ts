@@ -32,6 +32,11 @@ export interface Booking {
   budget?: string
   submission_urls?: string[]
   is_client_approved?: boolean
+  /** 0–100 progress the assigned developer reports on this booking. */
+  developerProgressPercent?: number
+  /** After the developer submits deliverables, workload counts ignore this booking until withdrawn. */
+  developerSubmittedWork?: boolean
+  developerSubmittedAt?: unknown
   /** Developer UIDs who expressed interest on an open (unassigned) request. */
   interestedDeveloperIds?: string[]
   interestedDeveloperMeta?: Record<string, { developerName?: string; expressedAt?: unknown }>

@@ -21,7 +21,7 @@ export default function SuperAdminLayout({
     { href: "/superadmin/services", label: "Services", icon: Package },
     { href: "/superadmin/users", label: "Users", icon: Users },
     { href: "/superadmin/bookings", label: "Bookings", icon: BarChart3 },
-    { href: "/superadmin/tasks", label: "My Tasks", icon: Briefcase },
+    { href: "/superadmin/tasks", label: "My projects", icon: Briefcase },
     { href: "/superadmin/settings", label: "Settings", icon: Settings },
   ]
 
