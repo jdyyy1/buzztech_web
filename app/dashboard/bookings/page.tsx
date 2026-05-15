@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import { Search, ChevronRight, Filter, Briefcase, User, Clock, AlertCircle, UserCheck, CheckCircle2, Download, X, Calendar, Paperclip } from "lucide-react"
 import Link from "next/link"
+import { usePathname } from "next/navigation"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -38,6 +39,7 @@ import {
 } from "@/lib/developer-profile"
 import { hasDownpaymentPaid, requiredDownpaymentAmount } from "@/lib/booking-payment-rules"
 import { getBookingAttachments } from "@/lib/booking-attachments"
+import { managementBasePathFromPathname } from "@/lib/management-base-path"
 import { BookingAttachmentExplorer } from "@/components/dashboard/booking-attachment-explorer"
 
 const SERVICE_CATEGORIES = [
@@ -57,6 +59,8 @@ const getAssignedStaffName = (booking: any): string | null =>
   booking.developerName || booking.developer_name || booking.staffName || booking.assignedStaffName || null
 
 export default function BookingsManagementPage() {
+  const pathname = usePathname()
+  const base = managementBasePathFromPathname(pathname)
   const [bookings, setBookings] = useState<Booking[]>([])
   const [staff, setStaff] = useState<UserType[]>([])
   const [userMap, setUserMap] = useState<Record<string, string>>({})
@@ -519,7 +523,7 @@ export default function BookingsManagementPage() {
               <DialogDescription>
                 Service: <span className="font-semibold text-foreground">{selectedBooking.serviceName}</span>
                 {" · "}
-                <Link href="/dashboard/developers" className="text-primary underline">
+                <Link href={`${base}/developers`} className="text-primary underline">
                   Manage profiles
                 </Link>
               </DialogDescription>
@@ -546,8 +550,8 @@ export default function BookingsManagementPage() {
                   {staff.length === 0 ? (
                     <p className="py-8 text-center text-sm text-muted-foreground">
                       No developer accounts. Add one under{" "}
-                      <Link href="/dashboard/users" className="text-primary underline">
-                        Users → Add New Staff
+                      <Link href={`${base}/users`} className="text-primary underline">
+                        Users → Add New Developer
                       </Link>
                       .
                     </p>

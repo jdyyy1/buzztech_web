@@ -57,7 +57,7 @@ export default function UsersPage() {
     return () => unsubscribe()
   }, [])
 
-  const handleCreateStaff = async (e: React.FormEvent) => {
+  const handleCreateDeveloper = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsSubmitting(true)
 
@@ -74,9 +74,9 @@ export default function UsersPage() {
       })
 
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error || "Failed to create staff")
+      if (!res.ok) throw new Error(data.error || "Failed to create developer")
 
-      toast.success("Staff member created successfully!")
+      toast.success("Developer account created successfully!")
       setIsCreateDialogOpen(false)
       setFormData({ name: "", email: "", password: "", specialties: [] })
     } catch (error: any) {
@@ -103,13 +103,13 @@ export default function UsersPage() {
         <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
           <DialogTrigger asChild>
             <Button className="gap-2 bg-primary hover:bg-primary/90">
-              <UserPlus className="w-4 h-4" /> Add New Staff
+              <UserPlus className="w-4 h-4" /> Add New Developer
             </Button>
           </DialogTrigger>
           <DialogContent className="sm:max-w-[480px]">
-            <form onSubmit={handleCreateStaff}>
+            <form onSubmit={handleCreateDeveloper}>
               <DialogHeader>
-                <DialogTitle>Create Staff Account</DialogTitle>
+                <DialogTitle>Create Developer Account</DialogTitle>
                 <DialogDescription>
                   This will create an account in both Firebase Auth and Firestore.
                 </DialogDescription>

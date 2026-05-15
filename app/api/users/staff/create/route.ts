@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
     await adminDb.collection("users").doc(userRecord.uid).set(userData)
 
     return NextResponse.json({ 
-      message: "Staff created successfully in Auth and Firestore",
+      message: "Developer created successfully in Auth and Firestore",
       uid: userRecord.uid 
     }, { status: 201 })
 

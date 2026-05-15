@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
+import { usePathname } from "next/navigation"
 import { collection, onSnapshot, orderBy, query, where } from "firebase/firestore"
 import { Code2, Pencil } from "lucide-react"
 import { toast } from "sonner"
@@ -9,6 +10,7 @@ import { toast } from "sonner"
 import { db } from "@/lib/firebase"
 import { Booking, User } from "@/lib/models"
 import { DEVELOPER_SPECIALTY_OPTIONS, FIXED_MAX_WORKLOAD, activeAssignmentCount } from "@/lib/developer-profile"
+import { managementBasePathFromPathname } from "@/lib/management-base-path"
 import { getDeveloperPresenceStatus } from "@/lib/user-activity-status"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -27,6 +29,8 @@ import {
 type DevRow = User & { id?: string }
 
 export default function DevelopersPage() {
+  const pathname = usePathname()
+  const base = managementBasePathFromPathname(pathname)
   const [developers, setDevelopers] = useState<DevRow[]>([])
   const [bookings, setBookings] = useState<Booking[]>([])
   const [loading, setLoading] = useState(true)
@@ -118,8 +122,8 @@ export default function DevelopersPage() {
             active or pending bookings. <span className="font-medium text-foreground">Active</span> means their
             session is currently using the web or mobile app (live presence); otherwise they show as Inactive. New
             accounts:{" "}
-            <Link href="/dashboard/users" className="text-primary underline font-medium">
-              Users → Add New Staff
+            <Link href={`${base}/users`} className="text-primary underline font-medium">
+              Users → Add New Developer
             </Link>
             .
           </p>

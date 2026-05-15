@@ -1,12 +1,14 @@
 "use client"
 
 import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, BarChart, Bar, PieChart, Pie, Cell } from "recharts"
-import { Users, Briefcase, TrendingUp, BarChart3, CheckCircle, Clock } from "lucide-react"
+import { Users, Briefcase, TrendingUp, BarChart3, CheckCircle, Clock, Package, Code2, History, Settings } from "lucide-react"
 import { Card } from "@/components/ui/card"
+import Link from "next/link"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useEffect, useMemo, useState } from "react"
 import { useAuth } from "@/lib/auth-context"
 import { useRouter } from "next/navigation"
+import { FIXED_MAX_WORKLOAD } from "@/lib/developer-profile"
 
 type RevenuePoint = { period: string; value: number }
 type NamedValue = { name: string; value: number }
@@ -28,7 +30,7 @@ type AnalyticsPayload = {
     completed: number
     successRate: string
     servicePopularity: NamedValue[]
-    staffWorkload: NamedValue[]
+    developerWorkload: NamedValue[]
   }
 }
 
@@ -211,6 +213,35 @@ export default function SuperAdminDashboard() {
         </div>
       </div>
 
+      <Card className="border-dashed p-4 print:hidden">
+        <p className="mb-3 text-xs font-bold uppercase tracking-wide text-muted-foreground">
+          Admin &amp; developer tools (superadmin)
+        </p>
+        <div className="flex flex-wrap gap-2">
+          {[
+            { href: "/superadmin/services", label: "Services", icon: Package },
+            { href: "/superadmin/users", label: "Users", icon: Users },
+            { href: "/superadmin/bookings", label: "Bookings", icon: BarChart3 },
+            { href: "/superadmin/developers", label: "Developers", icon: Code2 },
+            { href: "/superadmin/audit-trail", label: "Audit trail", icon: History },
+            { href: "/superadmin/tasks", label: "My projects", icon: Briefcase },
+            { href: "/superadmin/settings", label: "Settings", icon: Settings },
+          ].map((item) => {
+            const Icon = item.icon
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className="inline-flex items-center gap-2 rounded-md border border-border bg-background px-3 py-2 text-sm font-medium hover:bg-accent"
+              >
+                <Icon className="h-4 w-4 text-primary" />
+                {item.label}
+              </Link>
+            )
+          })}
+        </div>
+      </Card>
+
       {/* Primary Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <Card className="p-6">
@@ -380,23 +411,29 @@ export default function SuperAdminDashboard() {
           </div>
         </Card>
 
-        {/* Staff Workload */}
+        {/* Active developer workload (max {FIXED_MAX_WORKLOAD} concurrent) */}
         <Card className="p-6 h-full flex flex-col">
-          <h2 className="text-lg font-bold mb-6 flex items-center gap-2">
-            <Clock className="w-5 h-5 text-primary" /> Active Staff Workload
+          <h2 className="text-lg font-bold mb-2 flex items-center gap-2">
+            <Clock className="w-5 h-5 text-primary" /> Active Developer Workload
           </h2>
+          <p className="text-xs text-muted-foreground mb-4">
+            Pending + active bookings per developer (submitted work awaiting review does not count). Cap:{" "}
+            {FIXED_MAX_WORKLOAD} concurrent.
+          </p>
           <div className="space-y-4 flex-1">
-            {(analytics?.projects.staffWorkload || []).length > 0 ? (
-              analytics?.projects.staffWorkload.map((staff: any, idx: number) => (
-                <div key={idx} className="space-y-2">
+            {(analytics?.projects.developerWorkload || []).length > 0 ? (
+              analytics?.projects.developerWorkload.map((row, idx: number) => (
+                <div key={`${row.name}-${idx}`} className="space-y-2">
                   <div className="flex justify-between text-sm">
-                    <span className="font-medium">{staff.name}</span>
-                    <span className="text-muted-foreground">{staff.value} active tasks</span>
+                    <span className="font-medium">{row.name}</span>
+                    <span className="text-muted-foreground">
+                      {row.value} / {FIXED_MAX_WORKLOAD} active
+                    </span>
                   </div>
                   <div className="h-2 bg-accent rounded-full overflow-hidden">
-                    <div 
-                      className="h-full bg-primary transition-all" 
-                      style={{ width: `${Math.min((staff.value / 10) * 100, 100)}%` }}
+                    <div
+                      className="h-full bg-primary transition-all"
+                      style={{ width: `${Math.min((row.value / FIXED_MAX_WORKLOAD) * 100, 100)}%` }}
                     />
                   </div>
                 </div>

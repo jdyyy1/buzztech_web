@@ -3,7 +3,7 @@
 import type React from "react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
-import { LayoutGrid, Users, BarChart3, Settings, LogOut, Briefcase, Package } from "lucide-react"
+import { LayoutGrid, Users, BarChart3, Settings, LogOut, Briefcase, Package, Code2, History } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/lib/auth-context"
 
@@ -21,6 +21,8 @@ export default function SuperAdminLayout({
     { href: "/superadmin/services", label: "Services", icon: Package },
     { href: "/superadmin/users", label: "Users", icon: Users },
     { href: "/superadmin/bookings", label: "Bookings", icon: BarChart3 },
+    { href: "/superadmin/developers", label: "Developers", icon: Code2 },
+    { href: "/superadmin/audit-trail", label: "Audit trail", icon: History },
     { href: "/superadmin/tasks", label: "My projects", icon: Briefcase },
     { href: "/superadmin/settings", label: "Settings", icon: Settings },
   ]

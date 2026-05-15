@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server"
 import { adminDb } from "@/lib/firebase-admin"
-import { developerSubmittedWorkReleased } from "@/lib/developer-profile"
+import {
+  bookingAssignedDeveloperId,
+  developerSubmittedWorkReleased,
+} from "@/lib/developer-profile"
 
 export async function GET() {
   try {
@@ -76,18 +79,29 @@ export async function GET() {
     let totalBookings = 0
     let completedBookings = 0
     const servicePopularity: Record<string, number> = {}
-    const staffWorkload: Record<string, number> = {}
+    /** Per developer UID — same rules as in-app workload (PENDING + ACTIVE, not released after submit). */
+    const developerWorkloadByUid: Record<string, { name: string; value: number }> = {}
 
     bookingsSnapshot.forEach((doc) => {
       const data = doc.data()
       totalBookings++
       if (data.status === "COMPLETED") completedBookings++
-      
+
       const service = data.serviceName || "Unknown"
       servicePopularity[service] = (servicePopularity[service] || 0) + 1
 
-      if (data.developerId && data.status === "ACTIVE" && !developerSubmittedWorkReleased(data)) {
-        staffWorkload[data.developerName || "Unknown"] = (staffWorkload[data.developerName || "Unknown"] || 0) + 1
+      const devId = bookingAssignedDeveloperId(data)
+      const st = String(data.status || "")
+      if (
+        devId &&
+        (st === "PENDING" || st === "ACTIVE") &&
+        !developerSubmittedWorkReleased(data)
+      ) {
+        const name = String(data.developerName || "Unknown")
+        const cur = developerWorkloadByUid[devId] ?? { name, value: 0 }
+        cur.value += 1
+        if (data.developerName) cur.name = String(data.developerName)
+        developerWorkloadByUid[devId] = cur
       }
     })
 
@@ -120,7 +134,7 @@ export async function GET() {
         completed: completedBookings,
         successRate: successRate.toFixed(1),
         servicePopularity: Object.entries(servicePopularity).map(([name, value]) => ({ name, value })),
-        staffWorkload: Object.entries(staffWorkload).map(([name, value]) => ({ name, value }))
+        developerWorkload: Object.values(developerWorkloadByUid).map(({ name, value }) => ({ name, value })),
       }
     })
   } catch (error) {
