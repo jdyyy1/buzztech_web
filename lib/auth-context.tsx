@@ -94,10 +94,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!auth) {
         throw new Error("Firebase auth is not available")
       }
+      
+      // Clear Firebase auth state on client
       await auth.signOut()
       setUser(null)
       setFirebaseUser(null)
       document.cookie = "__session=; path=/; max-age=0"
+      
+      // Clear session cookie on server
+      await fetch("/api/auth/logout", { method: "POST" })
     } catch (err) {
       setError(err instanceof Error ? err.message : "Logout failed")
       throw err
