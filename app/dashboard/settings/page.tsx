@@ -3,8 +3,8 @@
 import { useState, useEffect } from "react"
 import { useTheme } from "next-themes"
 import { useAuth } from "@/lib/auth-context"
-import { db, auth } from "@/lib/firebase"
-import { doc, onSnapshot, updateDoc, collection, query, where, getDocs, addDoc, deleteDoc, serverTimestamp } from "firebase/firestore"
+import { db } from "@/lib/firebase"
+import { doc, onSnapshot, collection, getDocs } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
 import { updatePassword, reauthenticateWithCredential, EmailAuthProvider } from "firebase/auth"
 
@@ -42,13 +42,28 @@ import {
   Eye,
   EyeOff,
   Check,
-  X,
+  Upload,
 } from "lucide-react"
 
 // Validation utilities
-const validateEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
 const validatePassword = (password: string) => password.length >= 8
 const validateName = (name: string) => name.trim().length > 0
+
+// API call helper
+async function callSettingsAPI(action: string, data: any) {
+  const response = await fetch("/api/user/settings", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action, data }),
+  })
+  
+  if (!response.ok) {
+    const error = await response.json()
+    throw new Error(error.error || "Settings update failed")
+  }
+  
+  return response.json()
+}
 
 export default function SettingsPage() {
   const { user, logout, firebaseUser } = useAuth()
@@ -60,7 +75,6 @@ export default function SettingsPage() {
   const [profileEditing, setProfileEditing] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [editedName, setEditedName] = useState(user?.name || "")
-  const [accentColor, setAccentColor] = useState("#3b82f6")
   
   // Password change state
   const [passwordForm, setPasswordForm] = useState({ current: "", new: "", confirm: "" })
@@ -85,9 +99,6 @@ export default function SettingsPage() {
   // API Keys state
   const [apiKeys, setApiKeys] = useState<Array<{ id: string; name: string; createdAt: any; lastUsedAt: any; status: string }>>([])
   
-  // Sessions state
-  const [sessions, setSessions] = useState<Array<{ id: string; device: string; location: string; lastActive: any; current: boolean }>>([])
-  
   // System config
   const [systemConfig, setSystemConfig] = useState({
     maintenanceModeEnabled: false,
@@ -105,22 +116,20 @@ export default function SettingsPage() {
 
     const initializeSettings = async () => {
       try {
-        // Load system config
+        // Load system config for superadmins
         const docRef = doc(db, "system_config", "app_configuration")
-        const unsub = onSnapshot(docRef, (doc) => {
+        const unsubSystem = onSnapshot(docRef, (doc) => {
           if (doc.exists()) {
             setSystemConfig(doc.data() as any)
           }
         })
 
         // Load user preferences
-        const userPrefsRef = doc(db, "users", user.user_id, "preferences", "settings")
         const userPrefsSnap = await getDocs(collection(db, "users", user.user_id, "preferences"))
         if (userPrefsSnap.docs.length > 0) {
           const prefs = userPrefsSnap.docs[0].data()
           setNotifications(prefs.notifications || notifications)
           setTwoFactorEnabled(prefs.twoFactorEnabled || false)
-          setAccentColor(prefs.accentColor || "#3b82f6")
         }
 
         // Load API keys
@@ -128,15 +137,13 @@ export default function SettingsPage() {
         setApiKeys(keysSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as any)))
 
         // Load activity logs
-        const activitySnap = await getDocs(
-          query(collection(db, "users", user.user_id, "activityLogs"))
-        )
+        const activitySnap = await getDocs(collection(db, "users", user.user_id, "activityLogs"))
         setActivityLogs(activitySnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as any)))
 
         setLoading(false)
-        return unsub
-      } catch (error) {
-        console.error("Error loading settings:", error)
+        return unsubSystem
+      } catch (error: any) {
+        console.error("[v0] Error loading settings:", error.message)
         setLoading(false)
       }
     }
@@ -161,12 +168,14 @@ export default function SettingsPage() {
 
     setSaving(true)
     try {
-      const userRef = doc(db, "users", user.user_id)
-      await updateDoc(userRef, { name: editedName.trim() })
+      await callSettingsAPI("updateProfile", { name: editedName })
       toast({ title: "Success", description: "Profile updated successfully" })
       setProfileEditing(false)
-    } catch (error) {
-      toast({ title: "Error", description: "Failed to update profile", variant: "destructive" })
+      // Log activity
+      await callSettingsAPI("logActivity", { action: "Updated profile" })
+    } catch (error: any) {
+      console.error("[v0] Profile update error:", error)
+      toast({ title: "Error", description: error.message, variant: "destructive" })
     } finally {
       setSaving(false)
     }
@@ -174,7 +183,7 @@ export default function SettingsPage() {
 
   // Handle password change
   const handlePasswordChange = async () => {
-    if (!firebaseUser || !auth) {
+    if (!firebaseUser || !firebaseUser.email) {
       toast({ title: "Error", description: "User not authenticated", variant: "destructive" })
       return
     }
@@ -196,16 +205,18 @@ export default function SettingsPage() {
 
     setPasswordLoading(true)
     try {
-      const credential = EmailAuthProvider.credential(firebaseUser.email!, passwordForm.current)
+      const credential = EmailAuthProvider.credential(firebaseUser.email, passwordForm.current)
       await reauthenticateWithCredential(firebaseUser, credential)
       await updatePassword(firebaseUser, passwordForm.new)
       
       toast({ title: "Success", description: "Password updated successfully" })
       setPasswordForm({ current: "", new: "", confirm: "" })
+      await callSettingsAPI("logActivity", { action: "Changed password" })
     } catch (error: any) {
+      console.error("[v0] Password change error:", error)
       toast({ 
         title: "Error", 
-        description: error.code === "auth/wrong-password" ? "Current password is incorrect" : "Failed to update password",
+        description: error.code === "auth/wrong-password" ? "Current password is incorrect" : error.message,
         variant: "destructive" 
       })
     } finally {
@@ -219,19 +230,12 @@ export default function SettingsPage() {
 
     setNotificationsLoading(true)
     try {
-      const prefsRef = collection(db, "users", user.user_id, "preferences")
-      const q = query(prefsRef)
-      const snap = await getDocs(q)
-      
-      if (snap.docs.length > 0) {
-        await updateDoc(snap.docs[0].ref, { notifications })
-      } else {
-        await addDoc(prefsRef, { notifications, createdAt: serverTimestamp() })
-      }
-      
+      await callSettingsAPI("updateNotifications", { notifications })
       toast({ title: "Success", description: "Notification preferences saved" })
-    } catch (error) {
-      toast({ title: "Error", description: "Failed to save preferences", variant: "destructive" })
+      await callSettingsAPI("logActivity", { action: "Updated notification preferences" })
+    } catch (error: any) {
+      console.error("[v0] Notification update error:", error)
+      toast({ title: "Error", description: error.message, variant: "destructive" })
     } finally {
       setNotificationsLoading(false)
     }
@@ -243,19 +247,13 @@ export default function SettingsPage() {
 
     setTwoFactorLoading(true)
     try {
-      const prefsRef = collection(db, "users", user.user_id, "preferences")
-      const snap = await getDocs(prefsRef)
-      
-      if (snap.docs.length > 0) {
-        await updateDoc(snap.docs[0].ref, { twoFactorEnabled: enabled })
-      } else {
-        await addDoc(prefsRef, { twoFactorEnabled: enabled, createdAt: serverTimestamp() })
-      }
-      
+      await callSettingsAPI("toggle2FA", { enabled })
       setTwoFactorEnabled(enabled)
       toast({ title: "Success", description: `Two-factor authentication ${enabled ? "enabled" : "disabled"}` })
-    } catch (error) {
-      toast({ title: "Error", description: "Failed to update 2FA settings", variant: "destructive" })
+      await callSettingsAPI("logActivity", { action: `${enabled ? "Enabled" : "Disabled"} 2FA` })
+    } catch (error: any) {
+      console.error("[v0] 2FA toggle error:", error)
+      toast({ title: "Error", description: error.message, variant: "destructive" })
     } finally {
       setTwoFactorLoading(false)
     }
@@ -266,11 +264,13 @@ export default function SettingsPage() {
     if (!user) return
 
     try {
-      await deleteDoc(doc(db, "users", user.user_id, "apiKeys", keyId))
+      await callSettingsAPI("revokeApiKey", { keyId })
       setApiKeys(apiKeys.filter(k => k.id !== keyId))
       toast({ title: "Success", description: "API key revoked" })
-    } catch (error) {
-      toast({ title: "Error", description: "Failed to revoke API key", variant: "destructive" })
+      await callSettingsAPI("logActivity", { action: "Revoked API key" })
+    } catch (error: any) {
+      console.error("[v0] Revoke API key error:", error)
+      toast({ title: "Error", description: error.message, variant: "destructive" })
     }
   }
 
@@ -280,19 +280,15 @@ export default function SettingsPage() {
 
     setSaving(true)
     try {
-      const newKey = {
-        name: "New API Key",
-        createdAt: serverTimestamp(),
-        lastUsedAt: null,
-        status: "active",
-      }
-      await addDoc(collection(db, "users", user.user_id, "apiKeys"), newKey)
+      await callSettingsAPI("generateApiKey", {})
       toast({ title: "Success", description: "API key generated" })
       // Reload keys
       const keysSnap = await getDocs(collection(db, "users", user.user_id, "apiKeys"))
       setApiKeys(keysSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as any)))
-    } catch (error) {
-      toast({ title: "Error", description: "Failed to generate API key", variant: "destructive" })
+      await callSettingsAPI("logActivity", { action: "Generated new API key" })
+    } catch (error: any) {
+      console.error("[v0] Generate API key error:", error)
+      toast({ title: "Error", description: error.message, variant: "destructive" })
     } finally {
       setSaving(false)
     }
@@ -304,15 +300,19 @@ export default function SettingsPage() {
     
     setSaving(true)
     try {
-      const docRef = doc(db, "system_config", "app_configuration")
-      await updateDoc(docRef, updates)
-      toast({ title: "Settings updated", description: "System configuration saved successfully." })
-    } catch (error) {
-      toast({ 
-        title: "Update failed", 
-        description: "You might not have permission to modify system settings.",
-        variant: "destructive" 
+      const response = await fetch("/api/system/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ updates }),
       })
+      
+      if (!response.ok) throw new Error("Failed to update")
+      
+      setSystemConfig(prev => ({ ...prev, ...updates }))
+      toast({ title: "Success", description: "System configuration updated" })
+    } catch (error: any) {
+      console.error("[v0] System config error:", error)
+      toast({ title: "Error", description: error.message, variant: "destructive" })
     } finally {
       setSaving(false)
     }
@@ -323,7 +323,7 @@ export default function SettingsPage() {
     if (!timestamp) return "Never"
     try {
       const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp)
-      return date.toLocaleDateString() + " " + date.toLocaleTimeString()
+      return date.toLocaleDateString() + " " + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     } catch {
       return "Never"
     }
@@ -353,7 +353,7 @@ export default function SettingsPage() {
             <TabsTrigger value="security" className="gap-2 text-xs lg:text-sm"><Shield className="w-4 h-4" /><span className="hidden sm:inline">Security</span></TabsTrigger>
             <TabsTrigger value="notifications" className="gap-2 text-xs lg:text-sm"><Bell className="w-4 h-4" /><span className="hidden sm:inline">Notifications</span></TabsTrigger>
             <TabsTrigger value="activity" className="gap-2 text-xs lg:text-sm"><Clock className="w-4 h-4" /><span className="hidden sm:inline">Activity</span></TabsTrigger>
-            {(user?.role === "admin" || user?.role === "superadmin") && (
+            {user?.role === "superadmin" && (
               <TabsTrigger value="system" className="gap-2 text-xs lg:text-sm"><ShieldAlert className="w-4 h-4" /><span className="hidden sm:inline">System</span></TabsTrigger>
             )}
           </TabsList>
@@ -371,10 +371,16 @@ export default function SettingsPage() {
                   <Label className="text-base font-semibold">Profile Picture</Label>
                   <div className="flex items-center gap-4">
                     <div className="w-20 h-20 rounded-full bg-gradient-to-br from-primary to-primary/50 flex items-center justify-center text-white text-2xl font-bold">
-                      {user?.name?.charAt(0) || "U"}
+                      {user?.name?.charAt(0).toUpperCase() || "U"}
                     </div>
-                    <Button variant="outline" size="sm">Upload Photo</Button>
-                    <Button variant="ghost" size="sm">Remove</Button>
+                    <div className="flex gap-2">
+                      <Button variant="outline" size="sm" disabled>
+                        <Upload className="w-4 h-4 mr-2" />
+                        Upload Photo
+                      </Button>
+                      <Button variant="ghost" size="sm" disabled>Remove</Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">Photo upload coming soon</p>
                   </div>
                 </div>
 
@@ -388,7 +394,7 @@ export default function SettingsPage() {
                         id="fullname" 
                         value={editedName} 
                         onChange={(e) => setEditedName(e.target.value)}
-                        disabled={!profileEditing} 
+                        disabled={!profileEditing || saving} 
                       />
                     </div>
                     <div className="space-y-2">
@@ -423,7 +429,7 @@ export default function SettingsPage() {
                   {profileEditing && (
                     <Button 
                       onClick={handleProfileSave}
-                      disabled={saving || !editedName.trim()}
+                      disabled={saving || !editedName.trim() || editedName === user?.name}
                     >
                       {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
                       Save Changes
@@ -490,26 +496,6 @@ export default function SettingsPage() {
                       <Moon className={`h-5 w-5 transition-colors ${theme === 'dark' ? 'text-primary' : 'text-muted-foreground'}`} />
                     </div>
                   </div>
-                </div>
-
-                {/* Accent Color */}
-                <div className="space-y-4">
-                  <Label className="text-base font-semibold">Accent Color</Label>
-                  <div className="flex flex-wrap gap-3">
-                    {["#3b82f6", "#8b5cf6", "#ec4899", "#f59e0b", "#10b981", "#06b6d4"].map((color) => (
-                      <button
-                        key={color}
-                        onClick={() => {
-                          setAccentColor(color)
-                          toast({ title: "Accent color updated" })
-                        }}
-                        className={`w-10 h-10 rounded-lg transition-all border-2 ${accentColor === color ? "border-foreground scale-110" : "border-transparent hover:scale-105"}`}
-                        style={{ backgroundColor: color }}
-                        title={color}
-                      />
-                    ))}
-                  </div>
-                  <p className="text-xs text-muted-foreground">Selected color: {accentColor}</p>
                 </div>
               </CardContent>
             </Card>
@@ -683,7 +669,6 @@ export default function SettingsPage() {
 
           {/* Activity Tab */}
           <TabsContent value="activity" className="space-y-6">
-            {/* Recent Activity */}
             <Card className="border border-border/50">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2"><Clock className="w-5 h-5" /> Recent Activity</CardTitle>
@@ -712,102 +697,86 @@ export default function SettingsPage() {
           </TabsContent>
 
           {/* System Tab */}
-          {(user?.role === "admin" || user?.role === "superadmin") && (
+          {user?.role === "superadmin" && (
             <TabsContent value="system" className="space-y-6">
               <div className="space-y-6">
-                {user?.role === "superadmin" ? (
-                  <>
-                    {/* Maintenance Mode */}
-                    <Card className="border-destructive/50">
-                      <CardHeader className="flex flex-row items-center gap-4">
-                        <div className="bg-destructive/10 p-3 rounded-full">
-                          <ShieldAlert className="w-6 h-6 text-destructive" />
-                        </div>
-                        <div>
-                          <CardTitle>Maintenance Mode</CardTitle>
-                          <CardDescription>Restrict access during updates and maintenance.</CardDescription>
-                        </div>
-                      </CardHeader>
-                      <CardContent className="space-y-4">
-                        <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
-                          <Label htmlFor="m-mode" className="font-semibold">Enable Maintenance</Label>
-                          <Switch 
-                            id="m-mode"
-                            checked={systemConfig.maintenanceModeEnabled}
-                            onCheckedChange={(val) => handleUpdateConfig({ maintenanceModeEnabled: val })}
-                            disabled={saving}
-                          />
-                        </div>
-                        {systemConfig.maintenanceModeEnabled && (
-                          <div className="space-y-3 animate-in fade-in slide-in-from-top-1 p-4 bg-yellow-50 dark:bg-yellow-950/20 rounded-lg border border-yellow-200 dark:border-yellow-900">
-                            <Label htmlFor="m-msg" className="text-sm font-semibold">Maintenance Message</Label>
-                            <Textarea 
-                              id="m-msg"
-                              value={systemConfig.maintenanceModeMessage}
-                              onChange={(e) => setSystemConfig({...systemConfig, maintenanceModeMessage: e.target.value})}
-                              placeholder="System is undergoing maintenance..."
-                              className="resize-none"
-                            />
-                            <Button 
-                              size="sm" 
-                              onClick={() => handleUpdateConfig({ maintenanceModeMessage: systemConfig.maintenanceModeMessage })}
-                              disabled={saving}
-                            >
-                              {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-                              Update Message
-                            </Button>
-                          </div>
-                        )}
-                      </CardContent>
-                    </Card>
-
-                    {/* Global Branding */}
-                    <Card className="border border-border/50">
-                      <CardHeader>
-                        <CardTitle>Global Branding</CardTitle>
-                        <CardDescription>Update application-wide labels and branding.</CardDescription>
-                      </CardHeader>
-                      <CardContent className="space-y-4">
-                        <div className="space-y-3">
-                          <Label htmlFor="app-name" className="text-sm font-medium">App Name</Label>
-                          <div className="flex gap-2">
-                            <Input 
-                              id="app-name"
-                              value={systemConfig.appLabel}
-                              onChange={(e) => setSystemConfig({...systemConfig, appLabel: e.target.value})}
-                            />
-                            <Button onClick={() => handleUpdateConfig({ appLabel: systemConfig.appLabel })} disabled={saving}>
-                              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : "Save"}
-                            </Button>
-                          </div>
-                        </div>
-                        <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg border">
-                          <div className="space-y-0.5">
-                            <Label className="text-sm font-medium">Allow New Registrations</Label>
-                            <p className="text-xs text-muted-foreground">Enable or disable new user signups.</p>
-                          </div>
-                          <Switch 
-                            checked={systemConfig.allowNewRegistrations}
-                            onCheckedChange={(val) => handleUpdateConfig({ allowNewRegistrations: val })}
-                            disabled={saving}
-                          />
-                        </div>
-                      </CardContent>
-                    </Card>
-                  </>
-                ) : (
-                  <Card className="bg-muted/50 border border-border/50">
-                    <CardContent className="flex flex-col items-center justify-center p-12 text-center space-y-4">
-                      <Lock className="w-12 h-12 text-muted-foreground" />
-                      <div className="space-y-2">
-                        <h3 className="font-bold text-lg">Restricted Access</h3>
-                        <p className="text-sm text-muted-foreground max-w-xs">
-                          Only Superadmins can modify system-wide configurations and maintenance settings.
-                        </p>
+                {/* Maintenance Mode */}
+                <Card className="border-destructive/50">
+                  <CardHeader className="flex flex-row items-center gap-4">
+                    <div className="bg-destructive/10 p-3 rounded-full">
+                      <ShieldAlert className="w-6 h-6 text-destructive" />
+                    </div>
+                    <div>
+                      <CardTitle>Maintenance Mode</CardTitle>
+                      <CardDescription>Restrict access during updates and maintenance.</CardDescription>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
+                      <Label htmlFor="m-mode" className="font-semibold">Enable Maintenance</Label>
+                      <Switch 
+                        id="m-mode"
+                        checked={systemConfig.maintenanceModeEnabled}
+                        onCheckedChange={(val) => handleUpdateConfig({ maintenanceModeEnabled: val })}
+                        disabled={saving}
+                      />
+                    </div>
+                    {systemConfig.maintenanceModeEnabled && (
+                      <div className="space-y-3 animate-in fade-in slide-in-from-top-1 p-4 bg-yellow-50 dark:bg-yellow-950/20 rounded-lg border border-yellow-200 dark:border-yellow-900">
+                        <Label htmlFor="m-msg" className="text-sm font-semibold">Maintenance Message</Label>
+                        <Textarea 
+                          id="m-msg"
+                          value={systemConfig.maintenanceModeMessage}
+                          onChange={(e) => setSystemConfig({...systemConfig, maintenanceModeMessage: e.target.value})}
+                          placeholder="System is undergoing maintenance..."
+                          className="resize-none"
+                        />
+                        <Button 
+                          size="sm" 
+                          onClick={() => handleUpdateConfig({ maintenanceModeMessage: systemConfig.maintenanceModeMessage })}
+                          disabled={saving}
+                        >
+                          {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+                          Update Message
+                        </Button>
                       </div>
-                    </CardContent>
-                  </Card>
-                )}
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* Global Branding */}
+                <Card className="border border-border/50">
+                  <CardHeader>
+                    <CardTitle>Global Branding</CardTitle>
+                    <CardDescription>Update application-wide labels and branding.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="space-y-3">
+                      <Label htmlFor="app-name" className="text-sm font-medium">App Name</Label>
+                      <div className="flex gap-2">
+                        <Input 
+                          id="app-name"
+                          value={systemConfig.appLabel}
+                          onChange={(e) => setSystemConfig({...systemConfig, appLabel: e.target.value})}
+                        />
+                        <Button onClick={() => handleUpdateConfig({ appLabel: systemConfig.appLabel })} disabled={saving}>
+                          {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : "Save"}
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg border">
+                      <div className="space-y-0.5">
+                        <Label className="text-sm font-medium">Allow New Registrations</Label>
+                        <p className="text-xs text-muted-foreground">Enable or disable new user signups.</p>
+                      </div>
+                      <Switch 
+                        checked={systemConfig.allowNewRegistrations}
+                        onCheckedChange={(val) => handleUpdateConfig({ allowNewRegistrations: val })}
+                        disabled={saving}
+                      />
+                    </div>
+                  </CardContent>
+                </Card>
               </div>
             </TabsContent>
           )}
@@ -847,5 +816,3 @@ export default function SettingsPage() {
     </div>
   )
 }
-
-
