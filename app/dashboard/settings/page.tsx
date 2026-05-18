@@ -3,9 +3,10 @@
 import { useState, useEffect } from "react"
 import { useTheme } from "next-themes"
 import { useAuth } from "@/lib/auth-context"
-import { db } from "@/lib/firebase"
-import { doc, onSnapshot, updateDoc } from "firebase/firestore"
+import { db, auth } from "@/lib/firebase"
+import { doc, onSnapshot, updateDoc, collection, query, where, getDocs, addDoc, deleteDoc, serverTimestamp } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
+import { updatePassword, reauthenticateWithCredential, EmailAuthProvider } from "firebase/auth"
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
@@ -44,8 +45,13 @@ import {
   X,
 } from "lucide-react"
 
+// Validation utilities
+const validateEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+const validatePassword = (password: string) => password.length >= 8
+const validateName = (name: string) => name.trim().length > 0
+
 export default function SettingsPage() {
-  const { user, logout } = useAuth()
+  const { user, logout, firebaseUser } = useAuth()
   const { theme, setTheme } = useTheme()
   const { toast } = useToast()
   
@@ -53,26 +59,36 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false)
   const [profileEditing, setProfileEditing] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
+  const [editedName, setEditedName] = useState(user?.name || "")
   const [accentColor, setAccentColor] = useState("#3b82f6")
+  
+  // Password change state
+  const [passwordForm, setPasswordForm] = useState({ current: "", new: "", confirm: "" })
+  const [passwordLoading, setPasswordLoading] = useState(false)
+  
+  // Notification preferences state
   const [notifications, setNotifications] = useState({
     emailNotifications: true,
     pushNotifications: false,
     weeklyDigest: true,
     marketingEmails: false,
   })
-  const [recentActivity, setRecentActivity] = useState([
-    { action: "Logged in", timestamp: "Today at 10:30 AM", icon: "login" },
-    { action: "Settings updated", timestamp: "Yesterday at 2:45 PM", icon: "edit" },
-    { action: "Profile changed", timestamp: "3 days ago", icon: "profile" },
-  ])
+  const [notificationsLoading, setNotificationsLoading] = useState(false)
+  
+  // Activity data
+  const [activityLogs, setActivityLogs] = useState<Array<{ action: string; timestamp: any }>>([])
+  
+  // 2FA state
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(false)
-  const [apiKeys, setApiKeys] = useState([
-    { id: 1, name: "Development Key", created: "Jan 15, 2024", lastUsed: "Today", status: "active" },
-  ])
-  const [sessions, setSessions] = useState([
-    { id: 1, device: "Chrome on Windows", location: "New York, USA", lastActive: "Now", current: true },
-    { id: 2, device: "Safari on Mac", location: "New York, USA", lastActive: "2 hours ago", current: false },
-  ])
+  const [twoFactorLoading, setTwoFactorLoading] = useState(false)
+  
+  // API Keys state
+  const [apiKeys, setApiKeys] = useState<Array<{ id: string; name: string; createdAt: any; lastUsedAt: any; status: string }>>([])
+  
+  // Sessions state
+  const [sessions, setSessions] = useState<Array<{ id: string; device: string; location: string; lastActive: any; current: boolean }>>([])
+  
+  // System config
   const [systemConfig, setSystemConfig] = useState({
     maintenanceModeEnabled: false,
     maintenanceModeMessage: "",
@@ -80,27 +96,209 @@ export default function SettingsPage() {
     allowNewRegistrations: true,
   })
 
-  // 1. Real-time Firestore Sync for Maintenance Mode
+  // Load initial data
   useEffect(() => {
     if (!db || !user) {
       setLoading(false)
       return
     }
 
-    const docRef = doc(db, "system_config", "app_configuration")
-    const unsub = onSnapshot(docRef, (doc) => {
-      if (doc.exists()) {
-        setSystemConfig(doc.data() as any)
-      }
-      setLoading(false)
-    }, (error) => {
-      console.error("Firestore sync error:", error)
-      setLoading(false)
-    })
+    const initializeSettings = async () => {
+      try {
+        // Load system config
+        const docRef = doc(db, "system_config", "app_configuration")
+        const unsub = onSnapshot(docRef, (doc) => {
+          if (doc.exists()) {
+            setSystemConfig(doc.data() as any)
+          }
+        })
 
-    return () => unsub()
+        // Load user preferences
+        const userPrefsRef = doc(db, "users", user.user_id, "preferences", "settings")
+        const userPrefsSnap = await getDocs(collection(db, "users", user.user_id, "preferences"))
+        if (userPrefsSnap.docs.length > 0) {
+          const prefs = userPrefsSnap.docs[0].data()
+          setNotifications(prefs.notifications || notifications)
+          setTwoFactorEnabled(prefs.twoFactorEnabled || false)
+          setAccentColor(prefs.accentColor || "#3b82f6")
+        }
+
+        // Load API keys
+        const keysSnap = await getDocs(collection(db, "users", user.user_id, "apiKeys"))
+        setApiKeys(keysSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as any)))
+
+        // Load activity logs
+        const activitySnap = await getDocs(
+          query(collection(db, "users", user.user_id, "activityLogs"))
+        )
+        setActivityLogs(activitySnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as any)))
+
+        setLoading(false)
+        return unsub
+      } catch (error) {
+        console.error("Error loading settings:", error)
+        setLoading(false)
+      }
+    }
+
+    const unsubPromise = initializeSettings()
+    return () => {
+      unsubPromise.then(unsub => unsub && unsub())
+    }
   }, [user])
 
+  // Handle profile update
+  const handleProfileSave = async () => {
+    if (!firebaseUser || !user) {
+      toast({ title: "Error", description: "User not authenticated", variant: "destructive" })
+      return
+    }
+
+    if (!validateName(editedName)) {
+      toast({ title: "Error", description: "Please enter a valid name", variant: "destructive" })
+      return
+    }
+
+    setSaving(true)
+    try {
+      const userRef = doc(db, "users", user.user_id)
+      await updateDoc(userRef, { name: editedName.trim() })
+      toast({ title: "Success", description: "Profile updated successfully" })
+      setProfileEditing(false)
+    } catch (error) {
+      toast({ title: "Error", description: "Failed to update profile", variant: "destructive" })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  // Handle password change
+  const handlePasswordChange = async () => {
+    if (!firebaseUser || !auth) {
+      toast({ title: "Error", description: "User not authenticated", variant: "destructive" })
+      return
+    }
+
+    if (!passwordForm.current) {
+      toast({ title: "Error", description: "Please enter your current password", variant: "destructive" })
+      return
+    }
+
+    if (!validatePassword(passwordForm.new)) {
+      toast({ title: "Error", description: "New password must be at least 8 characters", variant: "destructive" })
+      return
+    }
+
+    if (passwordForm.new !== passwordForm.confirm) {
+      toast({ title: "Error", description: "Passwords do not match", variant: "destructive" })
+      return
+    }
+
+    setPasswordLoading(true)
+    try {
+      const credential = EmailAuthProvider.credential(firebaseUser.email!, passwordForm.current)
+      await reauthenticateWithCredential(firebaseUser, credential)
+      await updatePassword(firebaseUser, passwordForm.new)
+      
+      toast({ title: "Success", description: "Password updated successfully" })
+      setPasswordForm({ current: "", new: "", confirm: "" })
+    } catch (error: any) {
+      toast({ 
+        title: "Error", 
+        description: error.code === "auth/wrong-password" ? "Current password is incorrect" : "Failed to update password",
+        variant: "destructive" 
+      })
+    } finally {
+      setPasswordLoading(false)
+    }
+  }
+
+  // Handle notification preferences save
+  const handleSaveNotifications = async () => {
+    if (!user) return
+
+    setNotificationsLoading(true)
+    try {
+      const prefsRef = collection(db, "users", user.user_id, "preferences")
+      const q = query(prefsRef)
+      const snap = await getDocs(q)
+      
+      if (snap.docs.length > 0) {
+        await updateDoc(snap.docs[0].ref, { notifications })
+      } else {
+        await addDoc(prefsRef, { notifications, createdAt: serverTimestamp() })
+      }
+      
+      toast({ title: "Success", description: "Notification preferences saved" })
+    } catch (error) {
+      toast({ title: "Error", description: "Failed to save preferences", variant: "destructive" })
+    } finally {
+      setNotificationsLoading(false)
+    }
+  }
+
+  // Handle 2FA toggle
+  const handleToggle2FA = async (enabled: boolean) => {
+    if (!user) return
+
+    setTwoFactorLoading(true)
+    try {
+      const prefsRef = collection(db, "users", user.user_id, "preferences")
+      const snap = await getDocs(prefsRef)
+      
+      if (snap.docs.length > 0) {
+        await updateDoc(snap.docs[0].ref, { twoFactorEnabled: enabled })
+      } else {
+        await addDoc(prefsRef, { twoFactorEnabled: enabled, createdAt: serverTimestamp() })
+      }
+      
+      setTwoFactorEnabled(enabled)
+      toast({ title: "Success", description: `Two-factor authentication ${enabled ? "enabled" : "disabled"}` })
+    } catch (error) {
+      toast({ title: "Error", description: "Failed to update 2FA settings", variant: "destructive" })
+    } finally {
+      setTwoFactorLoading(false)
+    }
+  }
+
+  // Handle API key revocation
+  const handleRevokeApiKey = async (keyId: string) => {
+    if (!user) return
+
+    try {
+      await deleteDoc(doc(db, "users", user.user_id, "apiKeys", keyId))
+      setApiKeys(apiKeys.filter(k => k.id !== keyId))
+      toast({ title: "Success", description: "API key revoked" })
+    } catch (error) {
+      toast({ title: "Error", description: "Failed to revoke API key", variant: "destructive" })
+    }
+  }
+
+  // Handle generate new API key
+  const handleGenerateApiKey = async () => {
+    if (!user) return
+
+    setSaving(true)
+    try {
+      const newKey = {
+        name: "New API Key",
+        createdAt: serverTimestamp(),
+        lastUsedAt: null,
+        status: "active",
+      }
+      await addDoc(collection(db, "users", user.user_id, "apiKeys"), newKey)
+      toast({ title: "Success", description: "API key generated" })
+      // Reload keys
+      const keysSnap = await getDocs(collection(db, "users", user.user_id, "apiKeys"))
+      setApiKeys(keysSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as any)))
+    } catch (error) {
+      toast({ title: "Error", description: "Failed to generate API key", variant: "destructive" })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  // Handle system config update
   const handleUpdateConfig = async (updates: Partial<typeof systemConfig>) => {
     if (user?.role !== "superadmin") return
     
@@ -117,6 +315,17 @@ export default function SettingsPage() {
       })
     } finally {
       setSaving(false)
+    }
+  }
+
+  // Format timestamp for display
+  const formatTime = (timestamp: any) => {
+    if (!timestamp) return "Never"
+    try {
+      const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp)
+      return date.toLocaleDateString() + " " + date.toLocaleTimeString()
+    } catch {
+      return "Never"
     }
   }
 
@@ -175,7 +384,12 @@ export default function SettingsPage() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="fullname" className="text-sm">Full Name</Label>
-                      <Input id="fullname" defaultValue={user?.name} disabled={!profileEditing} />
+                      <Input 
+                        id="fullname" 
+                        value={editedName} 
+                        onChange={(e) => setEditedName(e.target.value)}
+                        disabled={!profileEditing} 
+                      />
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="email" className="text-sm">Email Address</Label>
@@ -194,10 +408,27 @@ export default function SettingsPage() {
                 </div>
 
                 <div className="flex gap-2 pt-2">
-                  <Button onClick={() => setProfileEditing(!profileEditing)}>
+                  <Button 
+                    onClick={() => {
+                      if (profileEditing) {
+                        setEditedName(user?.name || "")
+                      }
+                      setProfileEditing(!profileEditing)
+                    }}
+                    variant={profileEditing ? "outline" : "default"}
+                    disabled={saving}
+                  >
                     {profileEditing ? "Cancel" : "Edit Profile"}
                   </Button>
-                  {profileEditing && <Button variant="default">Save Changes</Button>}
+                  {profileEditing && (
+                    <Button 
+                      onClick={handleProfileSave}
+                      disabled={saving || !editedName.trim()}
+                    >
+                      {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+                      Save Changes
+                    </Button>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -298,24 +529,56 @@ export default function SettingsPage() {
                   <div className="space-y-3">
                     <div className="space-y-2">
                       <Label htmlFor="current-pwd" className="text-sm">Current Password</Label>
-                      <div className="relative">
-                        <Input 
-                          id="current-pwd" 
-                          type={showPassword ? "text" : "password"} 
-                          placeholder="••••••••"
-                        />
-                      </div>
+                      <Input 
+                        id="current-pwd" 
+                        type={showPassword ? "text" : "password"} 
+                        placeholder="••••••••"
+                        value={passwordForm.current}
+                        onChange={(e) => setPasswordForm({ ...passwordForm, current: e.target.value })}
+                        disabled={passwordLoading}
+                      />
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="new-pwd" className="text-sm">New Password</Label>
-                      <Input id="new-pwd" type="password" placeholder="••••••••" />
+                      <Input 
+                        id="new-pwd" 
+                        type={showPassword ? "text" : "password"} 
+                        placeholder="••••••••"
+                        value={passwordForm.new}
+                        onChange={(e) => setPasswordForm({ ...passwordForm, new: e.target.value })}
+                        disabled={passwordLoading}
+                      />
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="confirm-pwd" className="text-sm">Confirm Password</Label>
-                      <Input id="confirm-pwd" type="password" placeholder="••••••••" />
+                      <Input 
+                        id="confirm-pwd" 
+                        type={showPassword ? "text" : "password"} 
+                        placeholder="••••••••"
+                        value={passwordForm.confirm}
+                        onChange={(e) => setPasswordForm({ ...passwordForm, confirm: e.target.value })}
+                        disabled={passwordLoading}
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button 
+                        size="sm" 
+                        variant="ghost"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="gap-2"
+                      >
+                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </Button>
                     </div>
                   </div>
-                  <Button size="sm">Update Password</Button>
+                  <Button 
+                    size="sm"
+                    onClick={handlePasswordChange}
+                    disabled={passwordLoading || !passwordForm.current || !passwordForm.new || !passwordForm.confirm}
+                  >
+                    {passwordLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+                    Update Password
+                  </Button>
                 </div>
 
                 {/* Two-Factor Authentication */}
@@ -329,32 +592,51 @@ export default function SettingsPage() {
                       <div className={`text-xs font-medium px-2 py-1 rounded-full ${twoFactorEnabled ? "bg-green-100 text-green-700" : "bg-muted text-muted-foreground"}`}>
                         {twoFactorEnabled ? "Enabled" : "Disabled"}
                       </div>
-                      <Switch checked={twoFactorEnabled} onCheckedChange={setTwoFactorEnabled} />
+                      <Switch 
+                        checked={twoFactorEnabled} 
+                        onCheckedChange={handleToggle2FA}
+                        disabled={twoFactorLoading}
+                      />
                     </div>
                   </div>
-                  <Button size="sm" variant={twoFactorEnabled ? "destructive" : "default"}>
-                    {twoFactorEnabled ? "Disable 2FA" : "Setup 2FA"}
-                  </Button>
                 </div>
 
                 {/* API Keys */}
                 <div className="space-y-4">
                   <Label className="text-base font-semibold">API Keys</Label>
                   <div className="space-y-3">
-                    {apiKeys.map((key) => (
-                      <div key={key.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-                        <div className="space-y-1">
-                          <p className="font-medium text-sm">{key.name}</p>
-                          <p className="text-xs text-muted-foreground">Created {key.created} • Last used {key.lastUsed}</p>
+                    {apiKeys.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">No API keys yet. Generate one to get started.</p>
+                    ) : (
+                      apiKeys.map((key) => (
+                        <div key={key.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                          <div className="space-y-1">
+                            <p className="font-medium text-sm">{key.name}</p>
+                            <p className="text-xs text-muted-foreground">Created {formatTime(key.createdAt)} • Last used {formatTime(key.lastUsedAt)}</p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-medium px-2 py-1 bg-green-100 text-green-700 rounded-full">{key.status}</span>
+                            <Button 
+                              size="sm" 
+                              variant="ghost"
+                              onClick={() => handleRevokeApiKey(key.id)}
+                            >
+                              Revoke
+                            </Button>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs font-medium px-2 py-1 bg-green-100 text-green-700 rounded-full">{key.status}</span>
-                          <Button size="sm" variant="ghost">Revoke</Button>
-                        </div>
-                      </div>
-                    ))}
+                      ))
+                    )}
                   </div>
-                  <Button size="sm" variant="outline">Generate New Key</Button>
+                  <Button 
+                    size="sm" 
+                    variant="outline"
+                    onClick={handleGenerateApiKey}
+                    disabled={saving}
+                  >
+                    {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+                    Generate New Key
+                  </Button>
                 </div>
               </CardContent>
             </Card>
@@ -367,71 +649,64 @@ export default function SettingsPage() {
                 <CardTitle className="flex items-center gap-2"><Bell className="w-5 h-5" /> Notification Preferences</CardTitle>
                 <CardDescription>Choose how and when you want to be notified.</CardDescription>
               </CardHeader>
-              <CardContent className="space-y-4">
-                {[
-                  { key: "emailNotifications", label: "Email Notifications", description: "Receive email updates about your account" },
-                  { key: "pushNotifications", label: "Push Notifications", description: "Get browser push notifications for important events" },
-                  { key: "weeklyDigest", label: "Weekly Digest", description: "Receive a summary of activity once a week" },
-                  { key: "marketingEmails", label: "Marketing Emails", description: "Stay informed about new features and updates" },
-                ].map((notif) => (
-                  <div key={notif.key} className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors">
-                    <div className="space-y-0.5">
-                      <Label className="text-sm font-medium">{notif.label}</Label>
-                      <p className="text-xs text-muted-foreground">{notif.description}</p>
+              <CardContent className="space-y-6">
+                <div className="space-y-4">
+                  {[
+                    { key: "emailNotifications", label: "Email Notifications", description: "Receive email updates about your account" },
+                    { key: "pushNotifications", label: "Push Notifications", description: "Get browser push notifications for important events" },
+                    { key: "weeklyDigest", label: "Weekly Digest", description: "Receive a summary of activity once a week" },
+                    { key: "marketingEmails", label: "Marketing Emails", description: "Stay informed about new features and updates" },
+                  ].map((notif) => (
+                    <div key={notif.key} className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors">
+                      <div className="space-y-0.5">
+                        <Label className="text-sm font-medium">{notif.label}</Label>
+                        <p className="text-xs text-muted-foreground">{notif.description}</p>
+                      </div>
+                      <Switch 
+                        checked={notifications[notif.key as keyof typeof notifications]} 
+                        onCheckedChange={(val) => setNotifications({...notifications, [notif.key]: val})}
+                        disabled={notificationsLoading}
+                      />
                     </div>
-                    <Switch 
-                      checked={notifications[notif.key as keyof typeof notifications]} 
-                      onCheckedChange={(val) => setNotifications({...notifications, [notif.key]: val})}
-                    />
-                  </div>
-                ))}
+                  ))}
+                </div>
+                <Button 
+                  onClick={handleSaveNotifications}
+                  disabled={notificationsLoading}
+                >
+                  {notificationsLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+                  Save Preferences
+                </Button>
               </CardContent>
             </Card>
           </TabsContent>
 
           {/* Activity Tab */}
           <TabsContent value="activity" className="space-y-6">
-            <Card className="border border-border/50">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2"><Clock className="w-5 h-5" /> Active Sessions</CardTitle>
-                <CardDescription>Manage your active login sessions.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {sessions.map((session) => (
-                  <div key={session.id} className="flex items-center justify-between p-4 border rounded-lg">
-                    <div className="space-y-1 flex-1">
-                      <div className="flex items-center gap-2">
-                        <p className="font-medium text-sm">{session.device}</p>
-                        {session.current && <span className="text-xs font-medium px-2 py-0.5 bg-green-100 text-green-700 rounded-full">Current</span>}
-                      </div>
-                      <p className="text-xs text-muted-foreground">{session.location} • Last active {session.lastActive}</p>
-                    </div>
-                    {!session.current && <Button size="sm" variant="outline">Sign Out</Button>}
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-
             {/* Recent Activity */}
             <Card className="border border-border/50">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2"><Clock className="w-5 h-5" /> Recent Activity</CardTitle>
-                <CardDescription>View your recent account activities.</CardDescription>
+                <CardDescription>View your recent account activities and access logs.</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="space-y-4">
-                  {recentActivity.map((activity, idx) => (
-                    <div key={idx} className="flex items-center gap-4 pb-4 border-b last:border-0 last:pb-0">
-                      <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-                        <Clock className="w-5 h-5 text-primary" />
+                {activityLogs.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No activity recorded yet.</p>
+                ) : (
+                  <div className="space-y-4">
+                    {activityLogs.slice(0, 10).map((activity, idx) => (
+                      <div key={idx} className="flex items-center gap-4 pb-4 border-b last:border-0 last:pb-0">
+                        <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                          <Clock className="w-5 h-5 text-primary" />
+                        </div>
+                        <div className="flex-1">
+                          <p className="font-medium text-sm">{activity.action || "Activity"}</p>
+                          <p className="text-xs text-muted-foreground">{formatTime(activity.timestamp)}</p>
+                        </div>
                       </div>
-                      <div className="flex-1">
-                        <p className="font-medium text-sm">{activity.action}</p>
-                        <p className="text-xs text-muted-foreground">{activity.timestamp}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
